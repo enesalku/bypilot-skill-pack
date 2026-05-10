@@ -13,6 +13,33 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 [ -d "$WORKTREE" ] || { echo "[bootstrap] worktree not found: $WORKTREE" >&2; exit 1; }
 [ -d "$ROOT" ] || { echo "[bootstrap] consuming project root not found: $ROOT" >&2; exit 1; }
 
+# G4 — guard against running in the wrong checkout when two parent repos
+# share the same .git (e.g. moduler vs moduler-pilot symlink). If
+# BYPILOT_ROOT was set explicitly and disagrees with the worktree's parent
+# git common dir, refuse — silently writing to the wrong repo is the most
+# expensive failure mode here.
+if [ -n "${BYPILOT_ROOT:-}" ]; then
+  EXPECTED_GIT_DIR="$(cd "$ROOT" && git rev-parse --git-common-dir 2>/dev/null || true)"
+  ACTUAL_GIT_DIR="$(cd "$WORKTREE" && git rev-parse --git-common-dir 2>/dev/null || true)"
+  if [ -n "$EXPECTED_GIT_DIR" ] && [ -n "$ACTUAL_GIT_DIR" ] && \
+     [ "$(cd "$ROOT" && cd "$EXPECTED_GIT_DIR" && pwd)" != "$(cd "$WORKTREE" && cd "$ACTUAL_GIT_DIR" && pwd)" ]; then
+    echo "[bootstrap] FATAL: worktree git-common-dir != BYPILOT_ROOT git-common-dir" >&2
+    echo "[bootstrap]   ROOT=$ROOT (.git=$EXPECTED_GIT_DIR)" >&2
+    echo "[bootstrap]   WORKTREE=$WORKTREE (.git=$ACTUAL_GIT_DIR)" >&2
+    echo "[bootstrap]   refusing to bootstrap across repo boundaries" >&2
+    exit 3
+  fi
+fi
+
+# Optional: respect the bypilot session lock so a second concurrent driver
+# in the same root surfaces fast instead of stomping on shared state.
+if [ -f "$ROOT/.bypilot/lock" ]; then
+  LOCK_PID="$(grep -o '"pid"[^,}]*' "$ROOT/.bypilot/lock" 2>/dev/null | grep -o '[0-9]*' | head -1 || true)"
+  if [ -n "$LOCK_PID" ] && [ "$LOCK_PID" != "$$" ] && [ "$LOCK_PID" != "$PPID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "[bootstrap] note: session lock held by PID $LOCK_PID (continuing — bootstrap is per-worktree)" >&2
+  fi
+fi
+
 cd "$WORKTREE"
 
 step() { echo "[bootstrap] $*" >&2; }
