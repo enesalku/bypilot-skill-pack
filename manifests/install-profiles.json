@@ -1,0 +1,28 @@
+{
+  "$schema": "https://bypilot.ai/schemas/install-profiles.schema.json",
+  "version": "0.1.0",
+  "profiles": {
+    "minimal": {
+      "description": "Sadece sprint-driver + temel runner agent'ları. Multi-sprint orchestration. Continuous learning yok.",
+      "modules": ["sprint-driver-core", "runner-core"]
+    },
+    "core": {
+      "description": "Default. Sprint orchestrator + runners + reviewers + planner zinciri. Self-improvement HARİÇ.",
+      "modules": ["sprint-driver-core", "runner-core", "reviewer-core", "planner-core", "checkpoint-ux"]
+    },
+    "full": {
+      "description": "Her şey. Continuous learning v2.1, harness-optimizer, security hooks, GateGuard.",
+      "modules": [
+        "sprint-driver-core",
+        "runner-core",
+        "reviewer-core",
+        "planner-core",
+        "checkpoint-ux",
+        "learning-v2",
+        "self-improvement",
+        "security-guards",
+        "research"
+      ]
+    }
+  }
+}

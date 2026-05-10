@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bypilot.ai/schemas/instinct.schema.json",
+  "title": "bypilot instinct (ECC continuous-learning v2.1 ilhamı)",
+  "type": "object",
+  "required": ["id", "description", "trigger", "action", "confidence", "observedCount", "firstSeen", "lastSeen"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Lowercase, hyphenated. Stable across sessions."
+    },
+    "description": { "type": "string", "maxLength": 240 },
+    "trigger": {
+      "type": "string",
+      "description": "Bir cümlede: bu instinct ne zaman uygulanır?"
+    },
+    "action": {
+      "type": "string",
+      "description": "Bir cümlede: trigger'da ne yapılır?"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "0.3 başlangıç, 0.7+ promotion-ready"
+    },
+    "observedCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "firstSeen": { "type": "string", "format": "date-time" },
+    "lastSeen": { "type": "string", "format": "date-time" },
+    "examples": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Task ID veya commit hash referansları"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["personal", "project", "global", "promoted"],
+      "default": "personal"
+    },
+    "promotedTo": {
+      "type": "string",
+      "description": "Skill name (eğer scope=promoted ise)"
+    }
+  }
+}

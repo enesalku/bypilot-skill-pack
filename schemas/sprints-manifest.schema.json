@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bypilot.ai/schemas/sprints-manifest.schema.json",
+  "title": "bypilot docs/sprints.manifest.json",
+  "type": "object",
+  "required": ["active", "order"],
+  "properties": {
+    "active": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Sprint folder names currently runnable (e.g. ['sprint-3', 'sprint-4'])."
+    },
+    "order": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "All sprint folders in chronological/priority order. Driver scans active ones; archived are skipped."
+    },
+    "globalContext": {
+      "type": "string",
+      "default": "docs/CONTEXT.md",
+      "description": "Path to the cross-sprint context file every implementer reads."
+    },
+    "decisionsLog": {
+      "type": "string",
+      "default": "docs/decisions.log",
+      "description": "Append-only log of every completed task summary."
+    },
+    "maxParallel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 3,
+      "description": "Max concurrent implementer spawns per wave."
+    },
+    "checkpointEvery": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 5,
+      "description": "Show interactive checkpoint after every N completed tasks."
+    },
+    "autoPushAfterClean": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, after sprint completes with all green, prompt user once for push (still requires confirmation)."
+    },
+    "cleanupPushedWorktrees": {
+      "type": "boolean",
+      "default": true,
+      "description": "After human pushes branch, auto-remove the worktree."
+    }
+  }
+}

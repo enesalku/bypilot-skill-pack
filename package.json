@@ -1,0 +1,24 @@
+{
+  "name": "bypilot-skill-pack",
+  "version": "0.1.0-alpha.1",
+  "description": "Self-improving multi-sprint orchestrator skill pack for Claude Code",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "wave-picker": "node skills/sprint-driver/scripts/wave-picker.mjs"
+  },
+  "keywords": [
+    "claude-code",
+    "skill-pack",
+    "orchestrator",
+    "sprint-driver",
+    "multi-agent",
+    "self-improving"
+  ],
+  "dependencies": {},
+  "devDependencies": {}
+}

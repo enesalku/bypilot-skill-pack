@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bypilot.ai/schemas/tasks.schema.json",
+  "title": "bypilot tasks.json",
+  "description": "Schema for docs/sprint-<N>/tasks.json — extended with DAG fields, scope routing, test depth.",
+  "type": "object",
+  "required": ["sprint", "createdAt", "tasks"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "sprint": {
+      "type": "string",
+      "description": "Sprint identifier matching the parent folder name, e.g. '3' or '4-customer-mode'."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date"
+    },
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/task" }
+    }
+  },
+  "definitions": {
+    "task": {
+      "type": "object",
+      "required": ["id", "title", "status", "scope", "testDepth", "description", "acceptance"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Lowercase, hyphenated. Unique across the sprint."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "done", "blocked"]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 3
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["pilot", "coiffure", "api", "e2e", "shared", "infra", "docs"],
+          "description": "Drives which implementer agent handles the task."
+        },
+        "testDepth": {
+          "type": "string",
+          "enum": ["smoke", "happy-path", "comprehensive", "none"],
+          "description": "smoke: 1 happy-path test. happy-path: 3-5 main flow scenarios. comprehensive: 5+ including edge/error/persistence. none: docs/refactor only."
+        },
+        "estCost": {
+          "type": "string",
+          "enum": ["XS", "S", "M", "L", "XL"],
+          "description": "Token/effort hint. XS<2k, S<10k, M<30k, L<80k, XL=human gate likely."
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Hard deps. This task's status cannot leave 'pending' until every listed task is 'done'."
+        },
+        "conflictsWith": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Soft deps. These tasks cannot run in parallel with this one (file overlap, port conflict, etc.). Auto-detected from 'files' overlap unless explicit."
+        },
+        "softDependsOn": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Preferable order, but not required. Wave-picker uses this for ordering hint when both are ready."
+        },
+        "description": {
+          "type": "string"
+        },
+        "acceptance": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Testable acceptance criteria. Each line is a Given/When/Then or check item."
+        },
+        "files": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hint for the implementer + auto file-overlap conflict detection."
+        },
+        "testSpec": {
+          "type": "string",
+          "description": "Optional path to the e2e or vitest spec file expected from this task."
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^task-[a-z0-9-]+$",
+          "description": "Suggested branch name. Defaults to task-<id>."
+        },
+        "context": {
+          "type": "object",
+          "description": "Free-form key/value of helpful file references to seed the implementer."
+        },
+        "prerequisitesNeeded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Specific keys/access needed. If missing in .bypilot/setup.json, task is auto-blocked."
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "commitHash": { "type": "string" },
+        "worktreePath": { "type": "string" },
+        "blockedReason": { "type": "string" }
+      }
+    }
+  }
+}

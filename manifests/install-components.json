@@ -1,0 +1,48 @@
+{
+  "$schema": "https://bypilot.ai/schemas/install-components.schema.json",
+  "version": "0.1.0",
+  "description": "Granular component selection — kullanıcı kendi istediği skill ve agent'ları seçebilir. install-plan.js bunu yorumlar.",
+  "components": {
+    "skills": {
+      "sprint-driver": { "module": "sprint-driver-core", "required": true },
+      "pipeline": { "module": "sprint-driver-core", "required": false },
+      "status": { "module": "sprint-driver-core", "required": false },
+      "setup": { "module": "planner-core", "required": false },
+      "plan": { "module": "planner-core", "required": false },
+      "research": { "module": "research", "required": false },
+      "checkpoint": { "module": "checkpoint-ux", "required": false },
+      "learn": { "module": "learning-v2", "required": false },
+      "learn-eval": { "module": "learning-v2", "required": false },
+      "instincts": { "module": "learning-v2", "required": false },
+      "promote": { "module": "learning-v2", "required": false }
+    },
+    "agents": {
+      "orchestrator/loop-operator": { "module": "sprint-driver-core", "required": true },
+      "orchestrator/wave-picker": { "module": "sprint-driver-core", "required": true },
+      "orchestrator/context-broker": { "module": "sprint-driver-core", "required": true },
+      "orchestrator/checkpoint-gate": { "module": "checkpoint-ux", "required": true },
+      "orchestrator/harness-optimizer": { "module": "self-improvement", "required": false },
+      "implementer/pilot-implementer": { "module": "runner-core", "required": false },
+      "implementer/coiffure-implementer": { "module": "runner-core", "required": false },
+      "implementer/api-implementer": { "module": "runner-core", "required": false },
+      "implementer/e2e-implementer": { "module": "runner-core", "required": false },
+      "runner/test-runner": { "module": "runner-core", "required": true },
+      "runner/debugger": { "module": "runner-core", "required": true },
+      "reviewer/security-reviewer": { "module": "reviewer-core", "required": false },
+      "planner/interviewer": { "module": "planner-core", "required": false },
+      "planner/analyst": { "module": "planner-core", "required": false },
+      "planner/pm": { "module": "planner-core", "required": false },
+      "planner/architect": { "module": "planner-core", "required": false },
+      "planner/task-composer": { "module": "planner-core", "required": false },
+      "planner/researcher": { "module": "research", "required": false },
+      "learner/observer": { "module": "learning-v2", "required": false }
+    },
+    "hooks": {
+      "pre-tool-observe": { "module": "learning-v2", "required": false, "default": "off" },
+      "pre-edit-gateguard": { "module": "security-guards", "required": false, "default": "off" },
+      "pre-tool-governance": { "module": "security-guards", "required": false, "default": "off" },
+      "stop-pattern-extract": { "module": "learning-v2", "required": false, "default": "off" },
+      "stop-gate": { "module": "sprint-driver-core", "required": false, "default": "off" }
+    }
+  }
+}

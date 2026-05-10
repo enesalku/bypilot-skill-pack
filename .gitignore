@@ -1,0 +1,36 @@
+# Deps
+node_modules/
+.pnpm-store/
+
+# Build / cache
+dist/
+build/
+.cache/
+.turbo/
+
+# Test
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# bypilot runtime artifacts (generated in consuming projects)
+.bypilot-state.json
+observations.jsonl
+*.bypilot.local
+
+# Local secrets — never commit
+.env
+.env.*
+!.env.example
+.secrets/

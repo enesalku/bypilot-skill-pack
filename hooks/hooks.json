@@ -1,0 +1,79 @@
+{
+  "$schema": "https://bypilot.ai/schemas/hooks.schema.json",
+  "version": "0.1.0",
+  "description": "Hook registry. Tüm hook'lar BYPILOT_HOOK_PROFILE env var ile gate'lenir (off|lean|full). Bireysel kapatma BYPILOT_DISABLED_HOOKS=csv ile.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "id": "session-start-restore",
+        "command": "$BYPILOT_ROOT/hooks/session-start.sh",
+        "profile": ["lean", "full"],
+        "description": "Önceki session state.json'ı yükler, TaskList senkronize eder"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "id": "pre-tool-observe",
+        "matcher": "*",
+        "command": "$BYPILOT_ROOT/hooks/pre-tool-observe.js",
+        "async": true,
+        "timeout": 5,
+        "profile": ["full"],
+        "description": "100% observation — observations.jsonl'e tool call kaydı (continuous-learning v2.1)"
+      },
+      {
+        "id": "pre-edit-gateguard",
+        "matcher": "Edit|Write|MultiEdit",
+        "command": "$BYPILOT_ROOT/hooks/pre-edit-gateguard.js",
+        "timeout": 3,
+        "profile": ["full"],
+        "description": "İlk Edit/Write per file → importers + schema + task spec okutturur (ECC GateGuard ilhamı)"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "id": "post-edit-typecheck",
+        "matcher": "Edit|Write",
+        "command": "$BYPILOT_ROOT/hooks/post-edit-typecheck.sh",
+        "timeout": 30,
+        "profile": ["lean", "full"],
+        "description": "Quick tsc --noEmit hızlı feedback"
+      }
+    ],
+    "PreCompact": [
+      {
+        "id": "pre-compact-save",
+        "command": "$BYPILOT_ROOT/hooks/pre-compact-save.js",
+        "timeout": 10,
+        "profile": ["lean", "full"],
+        "description": "Context compaction öncesi state persist"
+      }
+    ],
+    "Stop": [
+      {
+        "id": "stop-gate",
+        "command": "$BYPILOT_ROOT/hooks/stop-gate.sh",
+        "timeout": 90,
+        "profile": ["lean", "full"],
+        "description": "Sprint-driver aktifken kırmızı testle Stop'u engelle"
+      },
+      {
+        "id": "stop-pattern-extract",
+        "command": "$BYPILOT_ROOT/hooks/stop-pattern-extract.js",
+        "async": true,
+        "timeout": 30,
+        "profile": ["full"],
+        "description": "observer agent'ı tetikle — observations.jsonl → instincts"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "id": "session-end-cleanup",
+        "command": "$BYPILOT_ROOT/hooks/session-end-cleanup.sh",
+        "timeout": 30,
+        "profile": ["lean", "full"],
+        "description": "Push edilmiş worktree'leri temizle (push edilmemiş dokunulmaz)"
+      }
+    ]
+  }
+}

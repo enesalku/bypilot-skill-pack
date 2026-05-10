@@ -1,0 +1,69 @@
+{
+  "$schema": "https://bypilot.ai/schemas/install-modules.schema.json",
+  "version": "0.1.0",
+  "modules": {
+    "sprint-driver-core": {
+      "description": "Multi-sprint DAG orchestrator: pre-flight, wave-picker, context-broker, fan-out, state commit, checkpoint",
+      "skills": ["sprint-driver", "pipeline", "status"],
+      "agents": [
+        "orchestrator/loop-operator",
+        "orchestrator/wave-picker",
+        "orchestrator/context-broker",
+        "orchestrator/checkpoint-gate"
+      ],
+      "scripts": [
+        "skills/sprint-driver/scripts/wave-picker.mjs",
+        "skills/sprint-driver/scripts/port-allocator.sh",
+        "skills/sprint-driver/scripts/bootstrap-worktree.sh"
+      ],
+      "schemas": ["tasks.schema.json", "sprints-manifest.schema.json"]
+    },
+    "runner-core": {
+      "description": "Test runner + debugger (host-first vitest+tsc+playwright)",
+      "agents": ["runner/test-runner", "runner/debugger"]
+    },
+    "reviewer-core": {
+      "description": "Domain-specific code reviewers",
+      "agents": [
+        "reviewer/security-reviewer"
+      ],
+      "todo": ["reviewer/pilot-reviewer", "reviewer/api-reviewer", "reviewer/frontend-reviewer"]
+    },
+    "planner-core": {
+      "description": "BMAD-inspired planning chain: setup → research → analyst → PM → architect → task-composer",
+      "skills": ["setup", "plan"],
+      "agents": [
+        "planner/interviewer",
+        "planner/analyst",
+        "planner/pm",
+        "planner/architect",
+        "planner/task-composer"
+      ]
+    },
+    "checkpoint-ux": {
+      "description": "Front-facing checkpoint markdown blocks + TaskList integration",
+      "skills": ["checkpoint"],
+      "agents": ["orchestrator/checkpoint-gate"]
+    },
+    "learning-v2": {
+      "description": "Continuous learning v2.1: 100% PreToolUse observation, project-scoped instincts, confidence scoring",
+      "skills": ["instincts", "promote", "learn", "learn-eval"],
+      "agents": ["learner/observer"],
+      "hooks": ["pre-tool-observe", "stop-pattern-extract"]
+    },
+    "self-improvement": {
+      "description": "Sprint retrospective + skill/agent update suggestions as patches",
+      "skills": [],
+      "agents": ["orchestrator/harness-optimizer"]
+    },
+    "security-guards": {
+      "description": "GateGuard fact-force, governance capture, MCP health check (ECC ilhamı)",
+      "hooks": ["pre-edit-gateguard", "pre-tool-governance"]
+    },
+    "research": {
+      "description": "Open-source feature mining + memo generation",
+      "skills": ["research"],
+      "agents": ["planner/researcher"]
+    }
+  }
+}
