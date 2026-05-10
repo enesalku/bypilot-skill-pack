@@ -31,18 +31,21 @@ docs/                                       — architecture, hook catalog, plac
 
 | Command | Purpose |
 |---|---|
-| `/bypilot run` | Multi-sprint orchestrator entrypoint |
-| `/bypilot run --resume` | Resume from last checkpoint |
-| `/bypilot learn` | Mid-session pattern extraction |
-| `/bypilot promote <instinct-id>` | Graduate an instinct to a skill |
-| `/bypilot status` | Show current state, wave, instincts |
-| `/bypilot install` | Run install-plan + apply (selective) |
+| `/bypilot-sprint-driver` | Multi-sprint orchestrator entrypoint |
+| `/bypilot-sprint-driver --resume` | Resume from last checkpoint |
+| `/bypilot-setup` | One-shot prereq interview |
+| `/bypilot-research <goal>` | Open-source feature mining |
+| `/bypilot-plan <goal>` | Analyst→PM→architect→task-composer chain |
+| `/bypilot-pipeline <goal>` | setup→research→plan→sprint-driver end-to-end |
+| `/bypilot-learn` | Mid-session pattern extraction |
+| `/bypilot-promote <instinct-id>` | Graduate an instinct to a skill |
+| `/bypilot-status` | Show current state, wave, instincts |
 
 ## Development Workflow
 
 1. **Plan** — touch SOUL.md / RULES.md only when philosophy changes; otherwise modify a single skill or agent.
 2. **TDD-ish** — for scripts, write a fixture under `tests/integration/` first.
-3. **Don't break consumers** — bypilot is consumed by ByPilot. Run a smoke test of `/bypilot run` against `bypilot-moduler-pilot`'s `docs/sprint-3/tasks.json` before merging.
+3. **Don't break consumers** — bypilot is consumed by ByPilot. Run a smoke test of `/bypilot-sprint-driver` against `bypilot-moduler-pilot`'s `docs/sprint-3/tasks.json` before merging.
 4. **Document the why** — every skill SKILL.md ends with "When to Use" so the orchestrator routes correctly.
 
 ## Self-Improvement Loop

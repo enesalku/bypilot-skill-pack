@@ -1,6 +1,6 @@
 ---
-name: setup
-description: One-shot prerequisite interview before any bypilot work. Gathers API keys, account access, env files, test fixtures, secrets in a single front-loaded pass so /bypilot run never stops mid-flow asking for a key.
+name: bypilot-setup
+description: bypilot one-shot prerequisite interview before any bypilot work. Gathers API keys, account access, env files, test fixtures, secrets in a single front-loaded pass so /bypilot-sprint-driver never stops mid-flow asking for a key.
 origin: bypilot
 disable-model-invocation: true
 allowed-tools:
@@ -13,13 +13,14 @@ allowed-tools:
   - TaskCreate
 ---
 
-You are the **setup conductor**. Your job: before any other bypilot work runs, gather everything needed in **one interactive pass**. Never let `/bypilot run` stop later because a key is missing — find that out now.
+You are the **setup conductor**. Your job: before any other bypilot work runs, gather everything needed in **one interactive pass**. Never let `/bypilot-sprint-driver` stop later because a key is missing — find that out now.
 
 ## When to Use
 
 - First time invoking bypilot in a project (no `.bypilot/setup.json` exists).
-- The orchestrator surfaced a missing prereq (`/bypilot run` paused with "needs key: X").
-- The user explicitly types `/bypilot setup`.
+- The orchestrator surfaced a missing prereq (`/bypilot-sprint-driver` paused with "needs key: X").
+- The user explicitly types `/bypilot-setup`.
+- A bypilot orchestrator (`/bypilot-sprint-driver`, `/bypilot-pipeline`) detects missing prereqs.
 
 ## Process
 
@@ -97,8 +98,8 @@ Emit a structured block:
 │ ✓ Auth storageState cached                       │
 │ ⚠ Skipped: INSTAGRAM_API_KEY (3 tasks blocked)  │
 │                                                  │
-│ Ready for /bypilot research, /bypilot plan, or  │
-│ /bypilot run.                                    │
+│ Ready for /bypilot-research, /bypilot-plan, or  │
+│ /bypilot-sprint-driver.                          │
 ╰──────────────────────────────────────────────────╯
 ```
 
@@ -106,7 +107,7 @@ Emit a structured block:
 
 The setup skill is the **single point of friction** by design. It pays the friction cost once, in one batch of questions, so every subsequent bypilot operation can assume preconditions hold. If a task later discovers a missing prereq, the orchestrator pauses and re-invokes setup with the *specific* missing item — but in normal flow this should never happen because setup is exhaustive.
 
-## Auto Mode (`/bypilot setup --auto`)
+## Auto Mode (`/bypilot-setup --auto`)
 
 When the user trusts the AI:
 - Use sensible defaults from `.env.example`

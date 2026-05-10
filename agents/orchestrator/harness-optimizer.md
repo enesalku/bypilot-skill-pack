@@ -64,7 +64,7 @@ Her öneri ayrı bir patch — kullanıcı `--apply <id>` ile seçerek uygular.
 ### #2: pilot-implementer'a "L1 default" instinct'i skill'e dönüştür
 **Sebep:** Bu sprintte 4 task aynı L1 onay default'unu yazdı; instinct confidence 0.78
 **Yeni skill:** skills/pilot-l1-defaults/SKILL.md
-**Eylem:** `/bypilot promote tool-l1-default`
+**Eylem:** `/bypilot-promote tool-l1-default`
 
 ### #3: ...
 ```

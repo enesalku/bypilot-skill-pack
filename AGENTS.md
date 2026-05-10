@@ -28,10 +28,10 @@ This lane runs *before* the orchestrator. It generates sprints from a high-level
 |---|---|---|---|
 | **interviewer** | Setup interview: keys, accounts, fixtures, env. Asks once, asks all at once, never piecemeal | First time on a new project, or when a missing prereq surfaces | haiku |
 | **researcher** | Open-source feature mining. Fetches inspiration repos, extracts candidate features with cost/value notes | Start of a major initiative, or when planner needs more candidates | opus |
-| **analyst** | Market/product framing. Turns intent → opportunity brief (jobs-to-be-done, segments, constraints) | Step 1 of `/bypilot plan` | opus |
-| **pm** | PRD synthesizer. Turns brief + research → epics, user stories, acceptance criteria | Step 2 of `/bypilot plan` | opus |
-| **architect** | Tech design. Turns PRD → component map, schema deltas, RBAC notes, observable risks | Step 3 of `/bypilot plan` | opus |
-| **task-composer** | DAG builder. Turns architect output → `docs/sprint-X/tasks.json` with `dependsOn`, `conflictsWith`, `testDepth`, `scope`, `files` | Step 4 of `/bypilot plan` | opus |
+| **analyst** | Market/product framing. Turns intent → opportunity brief (jobs-to-be-done, segments, constraints) | Step 1 of `/bypilot-plan` | opus |
+| **pm** | PRD synthesizer. Turns brief + research → epics, user stories, acceptance criteria | Step 2 of `/bypilot-plan` | opus |
+| **architect** | Tech design. Turns PRD → component map, schema deltas, RBAC notes, observable risks | Step 3 of `/bypilot-plan` | opus |
+| **task-composer** | DAG builder. Turns architect output → `docs/sprint-X/tasks.json` with `dependsOn`, `conflictsWith`, `testDepth`, `scope`, `files` | Step 4 of `/bypilot-plan` | opus |
 
 ## Implementer Lane
 

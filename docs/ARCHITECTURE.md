@@ -9,8 +9,9 @@ USER intent
   │
   ▼
 ┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────┐
-│ /bypilot    │ →  │ /bypilot     │ →  │ /bypilot    │ →  │ /bypilot │
-│ setup       │    │ research     │    │ plan        │    │ run      │
+│ /bypilot-   │ →  │ /bypilot-    │ →  │ /bypilot-   │ →  │ /bypilot-│
+│ setup       │    │ research     │    │ plan        │    │ sprint-  │
+│             │    │              │    │             │    │ driver   │
 └─────────────┘    └──────────────┘    └─────────────┘    └──────────┘
   prereq             open-source         analyst→PM         wave loop
   interview          feature mining      →architect         (this paper)
@@ -19,7 +20,7 @@ USER intent
   │ (auto/intearctive at every step; --auto for AI-decides) │
   └─────────────────────────────────────────────────────────┘
 
-  └──→ /bypilot pipeline = 4'lü zinciri tek komutta sırayla koşturur
+  └──→ /bypilot-pipeline = 4'lü zinciri tek komutta sırayla koşturur
 ```
 
 ## Sprint-driver wave loop (the heart)
@@ -92,7 +93,7 @@ Every PreToolUse → ~/.bypilot/observations/<project-hash>/<date>.jsonl  [sanit
 Stop hook (async) → observer agent clusters into instincts
    → ~/.bypilot/instincts/<project-hash>/personal/<id>.json  [confidence-weighted]
    → registry sees instinct in 2+ projects → eligible for global scope
-   → /bypilot promote <id> → graduates to skill (manual confirm)
+   → /bypilot-promote <id> → graduates to skill (manual confirm)
 ```
 
 ## Self-improvement loop

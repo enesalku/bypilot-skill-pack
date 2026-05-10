@@ -14,7 +14,7 @@ Inspired by [ECC](https://github.com/affaan-m/everything-claude-code), [BMAD-MET
 
 ```bash
 # In a project with docs/sprint-*/tasks.json:
-/bypilot run
+/bypilot-sprint-driver
 
 # bypilot picks the next runnable wave and goes:
 #   pre-flight → wave-picker → context-broker → 3× implementer (parallel)
@@ -22,6 +22,18 @@ Inspired by [ECC](https://github.com/affaan-m/everything-claude-code), [BMAD-MET
 #                          → debugger (if red) → state commit → checkpoint UI
 # Loop until all pending tasks are done or a human step is required.
 ```
+
+## Slash commands (after install)
+
+| Command | What it does |
+|---|---|
+| `/bypilot-setup` | One-shot prerequisite interview |
+| `/bypilot-research <goal>` | Open-source feature mining → memo |
+| `/bypilot-plan <goal>` | analyst → PM → architect → tasks.json |
+| `/bypilot-sprint-driver` | Multi-sprint DAG wave loop |
+| `/bypilot-pipeline <goal>` | All four above, chained |
+| `/bypilot-learn` | Extract patterns mid-session |
+| `/bypilot-promote <id>` | Graduate instinct to skill |
 
 ## Architecture
 

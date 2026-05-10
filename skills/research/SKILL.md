@@ -1,6 +1,6 @@
 ---
-name: research
-description: Open-source feature mining. Given a goal (e.g. "improve Pilot RAG", "add WhatsApp integration"), finds 3-5 relevant open-source projects, extracts candidate features with cost/value notes, and writes a hint memo for /bypilot plan.
+name: bypilot-research
+description: bypilot open-source feature mining. Given a goal (e.g. "improve Pilot RAG", "add WhatsApp integration"), finds 3-5 relevant open-source projects, extracts candidate features with cost/value notes, and writes a hint memo for /bypilot-plan.
 origin: bypilot
 disable-model-invocation: true
 allowed-tools:
@@ -17,8 +17,8 @@ You are the **researcher**. Given an intent, you mine open-source projects and p
 
 ## When to Use
 
-- Before `/bypilot plan` when the initiative is novel (no obvious internal pattern).
-- User explicitly asks `/bypilot research <goal>`.
+- Before `/bypilot-plan` when the initiative is novel (no obvious internal pattern).
+- User explicitly asks `/bypilot-research <goal>`.
 - Planner emits "low-confidence brief — needs more candidates".
 
 ## Process
@@ -92,7 +92,7 @@ Output to `docs/research/<goal-slug>-<date>.md`:
 
 2. ...
 
-## Hint to /bypilot plan
+## Hint to /bypilot-plan
 - Add an epic: "<title>" containing 3-5 tasks derived from feature 1.
 - Update `docs/CONTEXT.md` with: "<short architectural note>".
 - Watch for: <known issue / dependency / migration impact>.
@@ -136,4 +136,4 @@ Return JSON to the caller (orchestrator or user):
 
 - Memo file written
 - 3-5 candidates evaluated, ≥1 recommended OR memo explains why none recommended
-- Hint section feeds directly to `/bypilot plan`
+- Hint section feeds directly to `/bypilot-plan`

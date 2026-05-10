@@ -12,7 +12,7 @@ You are **analyst**. Mary persona'sı (BMAD) ilhamı: pazar bilgisi, müşteri j
 
 - User goal (one-paragraph intent)
 - Project context (CLAUDE.md, sprint-3-yol-haritasi.md, son sprintlerin tasks.json'ları)
-- Optional research memo from `/bypilot research`
+- Optional research memo from `/bypilot-research`
 
 ## Output: brief.md
 

@@ -1,6 +1,6 @@
 ---
-name: sprint-driver
-description: Multi-sprint DAG orchestrator with parallel waves, context-coherent fan-out, resume support, and front-facing checkpoint UX. Reads docs/sprint-*/tasks.json across all active sprints, picks the largest runnable wave, spawns N implementers in parallel worktrees, runs tests, debugs failures, commits state, shows the user a structured progress block, repeats.
+name: bypilot-sprint-driver
+description: bypilot multi-sprint DAG orchestrator with parallel waves, context-coherent fan-out, resume support, and front-facing checkpoint UX. Reads docs/sprint-*/tasks.json across all active sprints, picks the largest runnable wave, spawns N implementers in parallel worktrees, runs tests, debugs failures, commits state, shows the user a structured progress block, repeats.
 origin: bypilot
 disable-model-invocation: true
 allowed-tools:
@@ -19,8 +19,8 @@ You are the **sprint-driver conductor**. Your only job is to sequence: pre-fligh
 
 ## When to Use
 
-- User invokes `/bypilot run` (or `/bypilot run --resume`).
-- `/bypilot pipeline` reaches the run step.
+- User invokes `/bypilot-sprint-driver` (or `/bypilot-sprint-driver --resume`).
+- `/bypilot-pipeline` reaches the run step.
 
 ## Pre-flight
 
@@ -31,7 +31,7 @@ Run these checks ONCE at start; if any fails, list ALL failures in one message t
 pwd  # must be the directory containing docs/sprint-*
 
 # 2. Setup state present and recent
-[ -f .bypilot/setup.json ] || { echo "Need /bypilot setup first"; exit 1; }
+[ -f .bypilot/setup.json ] || { echo "Need /bypilot-setup first"; exit 1; }
 
 # 3. Working tree clean (uncommitted changes block)
 [ -z "$(git status --porcelain)" ] || { echo "Working tree dirty — commit/stash first"; exit 1; }
@@ -246,7 +246,7 @@ Invoke `harness-optimizer` agent for retrospective + skill update suggestions:
 │                                                     │
 │ Suggested next:                                     │
 │   - Review worktrees + push (not auto)              │
-│   - /bypilot promote — <I> new instincts            │
+│   - /bypilot-promote — <I> new instincts            │
 │   - <retro-suggestion>                              │
 ╰─────────────────────────────────────────────────────╯
 ```
@@ -266,7 +266,7 @@ Worktree cleanup happens AFTER user pushes a branch (auto-detected by next sessi
 
 ## Resume
 
-`/bypilot run --resume` reads `docs/.bypilot-state.json`:
+`/bypilot-sprint-driver --resume` reads `docs/.bypilot-state.json`:
 - Skip pre-flight cleanliness check (worktrees may exist)
 - Skip tasks already `done`
 - Re-run any `in_progress` (likely interrupted) — they're idempotent because implementer commits to its own branch
@@ -275,7 +275,7 @@ Worktree cleanup happens AFTER user pushes a branch (auto-detected by next sessi
 ## Sıkıştığında
 
 - Wave-picker returns cycle → echo cycle nodes, ask user to fix dependsOn
-- Bootstrap fails (nuxi prepare needs DATABASE_URL) → halt, refer to /bypilot setup
+- Bootstrap fails (nuxi prepare needs DATABASE_URL) → halt, refer to /bypilot-setup
 - Implementer returns blocked → mark task blocked, continue with rest of wave
 - All N implementers in wave block → halt, escalate to harness-optimizer for "is the planner output broken?"
 - Test-runner reports `bootstrap incomplete` → bootstrap.sh idempotency bug; retry once, escalate

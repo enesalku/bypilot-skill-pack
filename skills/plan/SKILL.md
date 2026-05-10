@@ -1,6 +1,6 @@
 ---
-name: plan
-description: BMAD-inspired sprint planner. Takes a high-level goal (and optional research memo) and produces docs/sprint-X/tasks.json with full DAG dependencies, file hints, test depth, scope. Runs analyst → PM → architect → task-composer chain. Interactive by default, --auto for AI-autonomous mode.
+name: bypilot-plan
+description: bypilot BMAD-inspired sprint planner. Takes a high-level goal (and optional research memo) and produces docs/sprint-X/tasks.json with full DAG dependencies, file hints, test depth, scope. Runs analyst → PM → architect → task-composer chain. Interactive by default, --auto for AI-autonomous mode.
 origin: bypilot
 disable-model-invocation: true
 allowed-tools:
@@ -18,14 +18,14 @@ You are the **plan conductor**. Your job: turn a fuzzy intent into a fully-forme
 ## When to Use
 
 - User has an idea but no concrete tasks.
-- Research memo from `/bypilot research` is ready and needs to become tasks.
+- Research memo from `/bypilot-research` is ready and needs to become tasks.
 - User wants to seed a new sprint folder.
 - User has ready-made tasks but wants dependencies + scope analysis layered on top.
 
 ## Inputs
 
 - **Goal** (required): user-provided high-level intent. e.g. "Add WhatsApp customer chat to Pilot".
-- **Research memo** (optional): path to memo from `/bypilot research`.
+- **Research memo** (optional): path to memo from `/bypilot-research`.
 - **Existing context** (auto-loaded): project's CLAUDE.md, current `docs/sprint-*/tasks.json`, `docs/CONTEXT.md`, `docs/decisions.log`, recent git log.
 - **Mode** (default `interactive`): `interactive` asks at each handoff, `auto` runs the full chain unattended.
 
@@ -33,7 +33,7 @@ You are the **plan conductor**. Your job: turn a fuzzy intent into a fully-forme
 
 ### Step 0 — Setup gate
 
-Before anything else, check `.bypilot/setup.json`. If missing or stale (>14 days), invoke `/bypilot setup` first. The plan needs to know what's reachable (e.g., don't plan WhatsApp tasks if META keys are blocked).
+Before anything else, check `.bypilot/setup.json`. If missing or stale (>14 days), invoke `/bypilot-setup` first. The plan needs to know what's reachable (e.g., don't plan WhatsApp tasks if META keys are blocked).
 
 ### Step 1 — Analyst pass
 
@@ -162,11 +162,11 @@ echo "\n## Sprint <N> — <goal>\n<one-paragraph summary>" >> docs/CONTEXT.md
 │ Architecture: docs/sprint-<N>/architecture.md    │
 │ Tasks: docs/sprint-<N>/tasks.json                │
 │                                                  │
-│ Ready for: /bypilot run                          │
+│ Ready for: /bypilot-sprint-driver                          │
 ╰──────────────────────────────────────────────────╯
 ```
 
-## Auto Mode (`/bypilot plan --auto <goal>`)
+## Auto Mode (`/bypilot-plan --auto <goal>`)
 
 - Each handoff between agents is auto-accepted.
 - AI applies "what makes sense for ByPilot" — consults `MEMORY.md` and CLAUDE.md before deciding.
@@ -175,7 +175,7 @@ echo "\n## Sprint <N> — <goal>\n<one-paragraph summary>" >> docs/CONTEXT.md
 
 ## Accepting Pre-made Tasks
 
-If user already has tasks (a list, a doc, etc.), `/bypilot plan --import <path>`:
+If user already has tasks (a list, a doc, etc.), `/bypilot-plan --import <path>`:
 - Skip steps 1-3 (analyst, PM, architect)
 - Run step 4 (task-composer) with `mode=normalize` — adds `dependsOn`, `conflictsWith`, `scope`, `testDepth` fields
 - Validate, persist

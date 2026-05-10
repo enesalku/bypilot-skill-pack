@@ -1,6 +1,6 @@
 ---
-name: pipeline
-description: End-to-end zinciri (setup → research → plan → run) tek komutta koşturur. Her adımı sırayla çağırır, çıktıları sonraki adıma feed eder. Fail noktasında yumuşak duraklar, kullanıcıya tek-soru sorar.
+name: bypilot-pipeline
+description: bypilot end-to-end zinciri (setup → research → plan → sprint-driver) tek komutta koşturur. Her adımı sırayla çağırır, çıktıları sonraki adıma feed eder. Fail noktasında yumuşak duraklar, kullanıcıya tek-soru sorar.
 origin: bypilot
 disable-model-invocation: true
 allowed-tools:
@@ -17,8 +17,8 @@ You are the **pipeline conductor**. You don't think — you sequence the four pr
 
 ## When to Use
 
-- User runs `/bypilot pipeline <goal>` — full chain.
-- User runs `/bypilot pipeline --resume` — pick up wherever the last pipeline stopped.
+- User runs `/bypilot-pipeline <goal>` — full chain.
+- User runs `/bypilot-pipeline --resume` — pick up wherever the last pipeline stopped.
 - Auto-fired by harness-optimizer when it has a self-improvement task that affects bypilot's own code.
 
 ## Process
@@ -30,10 +30,10 @@ Check `.bypilot/pipeline-state.json` if it exists. State carries: `goal`, `lastC
 ### Step 2 — Run the four skills in sequence
 
 ```
-[setup]    → if .bypilot/setup.json missing or stale → invoke /bypilot setup
-[research] → if user-provided goal AND no recent memo → invoke /bypilot research <goal>
-[plan]     → if no fresh tasks.json for goal → invoke /bypilot plan
-[run]      → if pending tasks → invoke /bypilot run
+[setup]    → if .bypilot/setup.json missing or stale → invoke /bypilot-setup
+[research] → if user-provided goal AND no recent memo → invoke /bypilot-research <goal>
+[plan]     → if no fresh tasks.json for goal → invoke /bypilot-plan
+[run]      → if pending tasks → invoke /bypilot-sprint-driver
 ```
 
 After each skill, persist state and emit a brief summary line:
@@ -67,7 +67,7 @@ The pipeline does not bypass hard gates:
 │ Total: 47 minutes, ~620k tokens                  │
 │ Worktrees: 12 (all unpushed — see status block)  │
 │                                                  │
-│ Suggested next: review + push, or /bypilot       │
+│ Suggested next: review + push, or /bypilot-      │
 │ promote (3 new instincts ≥0.7 confidence).       │
 ╰──────────────────────────────────────────────────╯
 ```
