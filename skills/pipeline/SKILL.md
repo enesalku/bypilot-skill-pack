@@ -27,6 +27,8 @@ You are the **pipeline conductor**. You don't think — you sequence the four pr
 
 Check `.bypilot/pipeline-state.json` if it exists. State carries: `goal`, `lastCompletedStep`, `currentSprint`, `mode` (interactive/auto).
 
+Also check `.bypilot/integrations.json`. If absent → setup will create it. If present but `linear.lastVerifiedAt` >14 days old → setup re-runs the probe; pipeline does NOT bypass.
+
 ### Step 2 — Run the four skills in sequence
 
 ```
@@ -55,14 +57,55 @@ The pipeline does not bypass hard gates:
 
 ### Step 4 — Final report
 
+Pipeline kapanışında üç paralel iş:
+
+**4a. Pipeline-level rollup raporu** — `sprint-narrator` ile tüm sprint'leri toplu öğretici özet:
+
+```
+Agent({
+  subagent_type: "sprint-narrator",
+  description: "Pipeline rollup",
+  prompt: `mode: pipeline-rollup
+    sprints: ["sprint-7", "sprint-8"]
+    goal: "${goal}"
+    totalDurationMin: ${minutes}
+    totalTokensK: ${tokensK}`
+})
+```
+
+Narrator `docs/pipeline/<goal-slug>-rollup.md` üretir + notifier-broker üzerinden Telegram'a teaser + dosya yollar. Bu pipeline'ın "en son bittiğinde gelen" toplu özetidir (kullanıcı istedi).
+
+**4b. Linear pipeline-level comment** — sprint-driver Step 9 sprint-summary'yi zaten Linear'a yazmış. Pipeline ek olarak `linear-broker` mode `comment` ile pipeline-rollup'ı project milestone'una düşürür (varsa):
+
+```
+Agent({
+  subagent_type: "linear-broker",
+  prompt: `mode: comment
+    linearId: "<milestone-tracking-issue or first-done issue>"
+    kind: "summary"
+    body: "### 🏁 Pipeline complete\n\n- goal: \"${goal}\"\n- sprints: ${sprints}\n- done: ${doneN}, blocked: ${blockedN}\n- duration: ${minutes}m\n- tokens: ~${tokensK}k\n\nWorktrees ready for review — push manually."`
+})
+```
+
+**4c. Terminal final card** (her zaman):
+
 ```
 ╭─ bypilot · pipeline complete ───────────────────╮
 │ Goal: "Add WhatsApp customer chat to Pilot"      │
 │                                                  │
 │ ✓ setup    — 8 keys, 0 blockers                  │
+│            — Linear ✓ · Playwright MCP ✗ · TG ✓ │
 │ ✓ research — 3 features adopted (langchain,...)  │
 │ ✓ plan     — sprint-4, 14 tasks                  │
+│            — 8 Linear'dan, 6 yeni (mirror-up)    │
 │ ✓ run      — 12 done, 2 blocked, 0 failed        │
+│            — Linear: 12 Done, 2 Backlog+blocked  │
+│                                                  │
+│ Reports:                                         │
+│ → docs/pipeline/<slug>-rollup.md                 │
+│ → docs/sprint-7/sprint-report.md                 │
+│ → docs/sprint-7/test-guide.md (frontend)         │
+│ → Telegram: 4 mesaj atıldı (teaser + 3 dosya)    │
 │                                                  │
 │ Total: 47 minutes, ~620k tokens                  │
 │ Worktrees: 12 (all unpushed — see status block)  │
@@ -84,6 +127,10 @@ The pipeline does not bypass hard gates:
 2. **State her adımdan sonra persist.** Crash'te resume mümkün olsun.
 3. **Run adımındaki worktree'leri auto-push yapma.** Pipeline biter, push insan kararı.
 4. **Pipeline kendisi çalışırken `/clear` öneren bir checkpoint gösterirse de, durdurma kararı user'ın.** Pipeline default devam eder.
+5. **Linear-broker tek nokta.** Pipeline kendi başına `mcp__linear__*` çağırmaz. linear-broker noop dönerse pipeline devam eder.
+6. **Integration gate setup içinde.** Pipeline integration'ı ayrı kontrol etmez; setup adımı yapar. Pipeline sadece `.bypilot/integrations.json` taze mi diye bakar.
+7. **Notifier-broker tek nokta.** Telegram çağrıları sadece notifier-broker üzerinden veya `nohup ... &` ile fire-and-forget bridge script.
+8. **Sprint-narrator ölçeklenir.** Pipeline-rollup tüm sprint'leri kapsayabilir; sprint sayısı çoksa narrator multi-message attachment yapar (her sprint için ayrı dosya da gönderir).
 
 ## Sıkıştığında
 

@@ -64,6 +64,27 @@
       "description": "Open-source feature mining + memo generation",
       "skills": ["research"],
       "agents": ["planner/researcher"]
+    },
+    "linear-integration": {
+      "description": "Linear MCP entegrasyonu — plan-time issue import, runtime status sync, sprint-end summary. Tek ağız: linear-broker. setup/plan/sprint-driver/pipeline skill'leri broker üzerinden konuşur. MCP yoksa noop.",
+      "skills": [],
+      "agents": ["orchestrator/linear-broker"],
+      "mcpDependencies": ["linear"],
+      "configFile": ".bypilot/integrations.json"
+    },
+    "playwright-mcp": {
+      "description": "Playwright MCP canlı UI smoke route'u. test-runner agent'a frontend-touched task'larda live browser interaction ekler. Mevcut e2e/ Playwright suite'i zorunlu kalır; bu MCP advisory smoke için.",
+      "skills": [],
+      "agents": [],
+      "mcpDependencies": ["playwright"],
+      "configFile": ".bypilot/integrations.json"
+    },
+    "telegram-notifier": {
+      "description": "Telegram bot entegrasyonu — bildirim kanalı + interaktif uzak kontrol. notifier-broker: send/send-document/send-with-actions/ask-and-wait/inbox-poll. sprint-narrator: yarı-teknik öğretici sprint/pipeline raporu (md + Telegram). Bot API üzerinden Bot Token + Chat ID; Telegram MCP yok, Node 18+ native fetch + FormData ile bridge. Komutlar: /continue, /stop, /status, /clear, /reply, /start-pipeline. Pipeline akışını bölmez — alert fire-and-forget, rapor Step 9 sonunda.",
+      "skills": [],
+      "agents": ["orchestrator/notifier-broker", "orchestrator/sprint-narrator"],
+      "scripts": ["skills/sprint-driver/scripts/telegram-bridge.mjs"],
+      "configFile": ".bypilot/integrations.json"
     }
   }
 }

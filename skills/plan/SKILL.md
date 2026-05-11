@@ -11,6 +11,7 @@ allowed-tools:
   - Agent
   - AskUserQuestion
   - TaskCreate
+  - mcp__linear__list_projects
 ---
 
 You are the **plan conductor**. Your job: turn a fuzzy intent into a fully-formed sprint that bypilot's orchestrator can run unattended. You delegate to four planner agents — never plan by yourself.
@@ -34,6 +35,80 @@ You are the **plan conductor**. Your job: turn a fuzzy intent into a fully-forme
 ### Step 0 — Setup gate
 
 Before anything else, check `.bypilot/setup.json`. If missing or stale (>14 days), invoke `/bypilot-setup` first. The plan needs to know what's reachable (e.g., don't plan WhatsApp tasks if META keys are blocked).
+
+Also read `.bypilot/integrations.json`. If file is missing → invoke setup. If `linear.enabled: false` → log info and continue **without** Linear sourcing (skip Step 0.5).
+
+### Step 0.5 — Linear pre-pass (if `linear.enabled`)
+
+Linear, *kaynak değil aynadır*. Bu adımda Linear'ı **input** olarak kullan, ama AI'nın genişletme/parçalama/iptal etme yetkisi korunur.
+
+**Sub-step A — Project seçimi (her plan'de sorulur)**
+
+```
+Agent({
+  subagent_type: "linear-broker",
+  description: "List projects for plan input",
+  prompt: `mode: list-projects (read team from integrations.json). Return up to 8 most recently updated.`
+})
+```
+
+Sonra `AskUserQuestion`:
+
+```
+Q: "Bu plan hangi Linear project'ten besleniyor?"
+options:
+  - "<project A> — <summary 60ch>"
+  - "<project B> — ..."
+  - "(yeni — Linear'da yok, sadece tasks.json üret)"
+```
+
+Auto modda: en yakın `targetDate` veya en çok güncel project; rationale `docs/plan/<slug>-decisions.log`'a.
+
+**Sub-step B — Issue fetch + seçim**
+
+```
+Agent({
+  subagent_type: "linear-broker",
+  description: "Fetch issues for plan",
+  prompt: `mode: fetch-project-issues
+    project: "${selectedProject}"
+    statuses: ["Todo", "Backlog", "In Progress"]
+    assignee: "${integrations.linear.assignee}"`
+})
+```
+
+Dönen issue listesi 1-25 arası ise `AskUserQuestion`'a (multiSelect: true) sığar — kullanıcıya seçim sunar:
+
+```
+Q: "Hangi Linear issue'ları bu sprint'e dahil edelim?"
+header: "Linear seç"
+multiSelect: true
+options:
+  - "BYP-29 — Brain: context-builder modülü [P1 · Backend]"
+  - "BYP-30 — Brain: ayrı intent classifier [P1 · Backend]"
+  - "BYP-64 — Dry-run modu finalize [P0 · Urgent]"
+  ...
+```
+
+25'ten fazla ise priority desc + updatedAt sort, ilk 25'i göster + "...ve N issue daha — query daralt ister misin?" ek option.
+
+Auto modda: P0+P1+P2 olan tüm Todo+In Progress'leri import; sebep loglanır.
+
+**Sub-step C — Linear issue → goal context'e eklenir**
+
+Seçilen issue'lar analyst'in input'una eklenir:
+
+```
+goalContext = {
+  userGoal: "<original user-typed goal>",
+  linearSource: {
+    project: "<project name>",
+    issues: [{ id, title, description, labels, priority, parentId, estimate, milestone }]
+  }
+}
+```
+
+Analyst bu input'u **temel** olarak kullanır ama **birebir kopyalamak zorunda değildir**: gerekirse 1 Linear issue'unu N task'a parçalar, gerekirse 2 ilgili issue'u 1 task altında birleştirir, gerekirse Linear'da olmayan refactor-prep task'ı ekler. Her kararın gerekçesi `docs/plan/<slug>-decisions.log`'a.
 
 ### Step 1 — Analyst pass
 
@@ -148,6 +223,34 @@ jq '.active += ["sprint-<N>"]' docs/sprints.manifest.json > tmp && mv tmp docs/s
 echo "\n## Sprint <N> — <goal>\n<one-paragraph summary>" >> docs/CONTEXT.md
 ```
 
+### Step 6.5 — Mirror-up to Linear (if `linear.enabled`)
+
+Composer'ın çıkardığı her task için:
+
+```
+if (task.linearIssueId) {
+  // Linear'dan gelmiş — sadece status'u "Todo" garantile
+  Agent({ subagent_type: "linear-broker", prompt: `mode: set-status, linearId: "${task.linearIssueId}", bypilotStatus: "pending"` })
+} else {
+  // AI'nın eklediği yeni task — Linear'a mirror et
+  result = Agent({ subagent_type: "linear-broker", prompt: `mode: mirror-up, task: <json>, sprint: "sprint-<N>"` })
+  if (result.ok) {
+    // broker tasks.json'a linearIssueId zaten yazdı
+    log decisions: "task ${task.id} mirrored to ${result.linearId}"
+  }
+}
+```
+
+Auto modda hep otomatik mirror. Interactive modda da otomatik — kullanıcı kararı buydu.
+
+Composer'ın **drop ettiği** Linear issue'lar (örn. PRD scope-out'u nedeniyle) için:
+
+```
+Agent({ subagent_type: "linear-broker", prompt: `mode: cancel, linearId: "${droppedId}", reason: "composer dropped: ${rationale}"` })
+```
+
+Tüm aksiyonlar `docs/plan/<slug>-decisions.log`'a tek satır olarak yazılır.
+
 ### Step 7 — Report
 
 ```
@@ -161,6 +264,11 @@ echo "\n## Sprint <N> — <goal>\n<one-paragraph summary>" >> docs/CONTEXT.md
 │ PRD: docs/sprint-<N>/prd.md                      │
 │ Architecture: docs/sprint-<N>/architecture.md    │
 │ Tasks: docs/sprint-<N>/tasks.json                │
+│                                                  │
+│ Linear:                                          │
+│ ✓ 8 issue Linear'dan import edildi               │
+│ ✓ 4 yeni issue Linear'da açıldı (mirror-up)     │
+│ ✓ 1 issue cancel edildi (composer drop)         │
 │                                                  │
 │ Ready for: /bypilot-sprint-driver                          │
 ╰──────────────────────────────────────────────────╯
@@ -186,6 +294,9 @@ If user already has tasks (a list, a doc, etc.), `/bypilot-plan --import <path>`
 2. **Tüm karar gerekçeleri loglanır.** Auto mode da dahil — `docs/plan/<slug>-decisions.log` her handoff'u kaydeder.
 3. **DAG cycle yasak.** Validate step bunu yakalar; cycle varsa task-composer tekrar çağrılır.
 4. **Mevcut tasks.json'a değme.** Yeni sprint klasörü açılır; eski sprintlerin task'larını taşıma/silmeye yetkin değilsin.
+5. **Linear input, not constraint.** Linear issue listesi planlama girdisidir; AI parçalayabilir/birleştirebilir/refactor-prep ekleyebilir. Her sapma gerekçeli loglanır.
+6. **Linear MCP yoksa noop.** `integrations.json.linear.enabled === false` ise Step 0.5 ve Step 6.5 tamamen atlanır; plan eskisi gibi local çalışır.
+7. **Linear-broker dışında MCP çağrısı yok.** Plan skill `mcp__linear__*` tool'larını doğrudan çağırmaz — daima linear-broker üzerinden.
 
 ## Sıkıştığında
 

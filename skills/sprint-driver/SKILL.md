@@ -102,6 +102,31 @@ mode           : "interactive" | "ask-gates-wizard" | "auto"
 gatePrefs      : object loaded from .bypilot/gate-prefs.json
 ```
 
+### Step 0.5 — Inbox tarama (Telegram komutları, her iterasyon)
+
+Telegram aktifse `.bypilot/telegram-inbox.jsonl`'ı her wave başında oku:
+
+```
+INBOX=$(Agent({
+  subagent_type: "notifier-broker",
+  description: "Check Telegram inbox",
+  prompt: `mode: inbox-poll, sinceCursor: "${state.lastInboxCursor || ''}"`
+}))
+```
+
+Yeni komutlar varsa işle:
+
+| Komut | Aksiyon |
+|---|---|
+| `/stop` | Loop sonlanır — graceful: save-resume.mjs + worktree lock release + Telegram "🛑 durduruldu" yanıtı |
+| `/clear` | save-resume.mjs + clean exit (exit 0). `bypilot-loop.sh` wrapper fresh session başlatır (context wipe + --resume) |
+| `/status` | Fire-and-forget bridge `send` ile: current wave, busy tasks, ETA |
+| `/continue` | Default — noop, döngü zaten devam ediyor |
+| `/reply <text>` | Pending ask-and-wait varsa fallback — context'e enjekte; yoksa decisions.log'a not düşülür |
+| `/start-pipeline <goal>` | Sprint-driver kabul etmez — bu komut wrapper-level (bypilot-loop.sh), driver ignore eder ve "⚠️ pipeline ortasında yeni başlatılamaz" döner |
+
+Inbox temizliği: işlenen entry'ler `consume-command` ile işaretlenir, dosyadan silinmez (audit trail).
+
 ### Step 1 — Claim free slots (mini-burst)
 
 ```bash
@@ -117,9 +142,21 @@ CLAIM_JSON=$(node .claude/skills/bypilot-sprint-driver/scripts/scheduler.mjs cla
 `claim.length === 0 && busyTasks.length === 0 && pending > 0` → DAG stuck; classify via `self-fix-policy.mjs --kind dag-cycle` and apply.
 `claim.length === 0 && pending === 0` → SPRINT COMPLETE → Step 9.
 
-### Step 2 — TaskCreate UI tracking
+### Step 2 — TaskCreate UI tracking + Linear `In Progress`
 
 For each task in claim, `TaskCreate({ subject, description, activeForm })`. Set in_progress just before its implementer spawns.
+
+**Linear sync (in-progress):** if task has `linearIssueId` and `integrations.linear.enabled`:
+
+```
+Agent({
+  subagent_type: "linear-broker",
+  description: "Linear in_progress " + taskId,
+  prompt: `mode: set-status, linearId: "${task.linearIssueId}", bypilotStatus: "in_progress"`
+})
+```
+
+Tek atış; broker noop dönerse pipeline devam eder.
 
 ### Step 3 — Context-broker (parallel, MANDATORY)
 
@@ -209,6 +246,9 @@ Agent({
   prompt: `Worktree: ${worktreePath}
     Test depth: ${task.testDepth}
     Spec scope: ${task.testSpec || smartDefaultByDepth(task.testDepth)}
+    Frontend touched: ${task.scope === "coiffure" || frontendTouchedFiles}
+    Smoke URL (if frontend): ${task.smokeUrl || guessFromFiles(task.files)}
+    Task: { id: "${task.id}", linearIssueId: "${task.linearIssueId || ''}" }
 
     ## Discipline (NON-NEGOTIABLE)
     1. vitest, tsc, AND playwright must all pass.
@@ -216,10 +256,14 @@ Agent({
        packages/shared/src/pages/** → playwright spec is REQUIRED.
        If no playwright spec exists for the touched route, this run FAILS
        (driver will then create an e2e-spec follow-up task).
+    3. integrations.json.playwrightMcp.enabled && frontend touched && testDepth in
+       (happy-path|comprehensive) → also run MCP live smoke (advisory).
 
-    Return JSON: { ok, vitest, tsc, playwright, durations, envIssues, frontendTouched }`
+    Return JSON: { ok, vitest, tsc, playwright, durations, envIssues, frontendTouched, linearPayload }`
 })
 ```
+
+Test-runner Linear MCP'ye doğrudan yazmaz; `linearPayload` alanını doldurur. Step 7'de driver bunu `linear-broker mode: comment` ile forward eder. screenshot path verilmişse comment markdown'ında embed edilir.
 
 `smartDefaultByDepth`:
 - `smoke` → just `task.testSpec` if specified, else 1 single-spec smoke
@@ -288,6 +332,50 @@ for sib in "${busyTasks[@]}"; do
 done
 ```
 
+**Linear sync (done / blocked):** if `task.linearIssueId` and `integrations.linear.enabled`, ONE broker call per task — never per attempt:
+
+```
+# Status transition first
+Agent({
+  subagent_type: "linear-broker",
+  prompt: `mode: set-status, linearId: "${task.linearIssueId}", bypilotStatus: "${task.status}"`
+})
+
+# Then ONE comment summarizing the outcome
+if (task.status === "done") {
+  body = `**${task.id}** — ${task.title}
+
+- commit: \`${commitHash}\`
+- worktree: \`${worktreePath}\`
+- branch: \`${branchName}\` (push pending — manual)
+- testDepth: ${task.testDepth}
+- tests: vitest ${vitestN} ✓ · tsc ✓ · playwright ${playwrightN} ✓
+- duration: ${durationMin}m
+- summary: ${summary}`
+  Agent({ subagent_type: "linear-broker", prompt: `mode: comment, linearId: ..., kind: "test-result", body: <above>` })
+}
+
+if (task.status === "blocked") {
+  body = `**${task.id}** — ${task.title}
+
+- attempts: 3
+- root causes seen: ${prevAttempts.map(a => a.rootCause).join('; ')}
+- last failing log (tail 40):
+\`\`\`
+${failureLogTail}
+\`\`\`
+- snapshot tag: ${snapshotTag}
+- next action: human review needed`
+  Agent({ subagent_type: "linear-broker", prompt: `mode: comment, linearId: ..., kind: "blocker", body: <above>` })
+
+  // Telegram immediate alert (fire-and-forget; pipeline durmaz)
+  ALERT="⛔ *${task.id} BLOKE*\n\n${task.title}\n\nNeden: ${prevAttempts[2].rootCause}\nSnapshot: \`${snapshotTag}\`\n\nManuel inceleme gerekli."
+  bash -c "nohup node .claude/skills/bypilot-sprint-driver/scripts/telegram-bridge.mjs send --text \"${ALERT}\" > /dev/null 2>&1 &"
+}
+```
+
+Comment volume disiplini: her task için maks **1 status-set + 1 comment**. Debugger retry'larında ek Linear çağrısı yok.
+
 Remove the task from `busyTasks`, free the slot, increment `epochCompleted`, jump to Step 8 (epoch check) and back to Step 1.
 
 ### Step 8 — Epoch check (advisory boundary)
@@ -354,6 +442,54 @@ node .claude/skills/bypilot-sprint-driver/scripts/save-resume.mjs --note "sprint
 node .claude/skills/bypilot-sprint-driver/scripts/worktree-manager.mjs release-lock
 ```
 
+**Linear sync (sprint summary):** if `integrations.linear.enabled`:
+
+```
+Agent({
+  subagent_type: "linear-broker",
+  description: "Linear sprint summary",
+  prompt: `mode: sprint-summary
+    sprint: "${sprintSlug}"
+    doneIds: [<linearIds of done tasks>]
+    blockedIds: [<linearIds of blocked tasks>]
+    canceledIds: [<linearIds of canceled tasks>]
+    addedIds: [<linearIds of tasks added DURING this sprint by debugger follow-ups e.g. e2e-spec-*>]
+    projectName: "${linearProject}"
+    durationMin: ${totalMin}`
+})
+```
+
+Broker tek bir rollup comment yazar (en eski done issue'a) — sprint başına bir kez. Pipeline (`/bypilot-pipeline`) bittiğinde **ek olarak** pipeline-level summary de aynı broker üzerinden milestone'a yazılabilir.
+
+**Telegram öğretici rapor (sprint-narrator):** if `integrations.telegram.enabled`:
+
+```
+Agent({
+  subagent_type: "sprint-narrator",
+  description: "Sprint <N> educational report",
+  prompt: `mode: sprint-complete
+    sprint: "${sprintSlug}"
+    doneTaskIds: [...]
+    blockedTaskIds: [...]
+    canceledTaskIds: [...]
+    addedDuringRun: [...]
+    totalDurationMin: ${totalMin}
+    totalTokensK: ${totalTokensK}
+    frontendTouchedFiles: [...]`
+})
+```
+
+Narrator kendi içinde:
+1. `docs/sprint-<N>/sprint-report.md` yazar (her zaman, Telegram'dan bağımsız)
+2. Frontend touch varsa `docs/sprint-<N>/test-guide.md` yazar
+3. `notifier-broker` üzerinden:
+   - Inline teaser mesajı
+   - sprint-report.md sendDocument
+   - test-guide.md sendDocument (varsa)
+   - Opsiyonel `send-with-actions` (next pipeline önerisi)
+
+Bu çağrı sprint-driver'ın **son adımı** — Step 9 cleanup bittikten sonra. Pipeline akışı zaten bitmiş; rapor üretimi onu bölmüyor. Eğer eş zamanlı başka sprint koşacaksa (multi-sprint manifest), driver narrator'ı `nohup ... &` ile background'a atabilir.
+
 Render final report via `harness-optimizer` agent (retro + skill-update suggestions). Worktree cleanup is NOT automatic — even after sprint complete, user pushes branches manually and `housekeeping.mjs --execute` handles retention later.
 
 ```
@@ -372,6 +508,40 @@ Render final report via `harness-optimizer` agent (retro + skill-update suggesti
 ╰─────────────────────────────────────────────────────────────╯
 ```
 
+## Interactive AskUserQuestion routing (Telegram-aware)
+
+Sprint-driver `interactive` veya `ask-gates-wizard` modunda iken bir `AskUserQuestion` gerektiren karar noktası varsa:
+
+```
+if (mode === "interactive" && integrations.telegram?.enabled) {
+  // 1. Önce Telegram'a yolla, 10 dk bekle
+  RESULT = Agent({
+    subagent_type: "notifier-broker",
+    description: "Ask via Telegram",
+    prompt: `mode: ask-and-wait
+      questionId: "${qId}"
+      text: "${questionText}"
+      choices: [{label: "...", value: "..."}, ...]
+      timeoutSec: 600`
+  })
+
+  if (!RESULT.timeout) {
+    answer = RESULT.answer
+  } else {
+    // 2. Timeout — terminal AskUserQuestion fallback
+    answer = AskUserQuestion(...)
+    // 3. Telegram'a "timeout — terminal'e düştü" notu yolla
+    bash -c "nohup node .../telegram-bridge.mjs send --text '⏰ 10 dk cevap gelmedi — terminale düştüm. Cevap: ${answer}' &"
+  }
+}
+
+if (mode === "auto") {
+  // Hiç sorma. Auto contract.
+}
+```
+
+Bu routing sadece kritik karar noktalarında çalışır (örn. `--ask-gates` wizard, blocker noktasında "devam mı dur mu?"). Her iterasyonda değil.
+
 ## Self-fix policy (consume self-fix-policy.mjs)
 
 Whenever an error surfaces, classify it before halting:
@@ -385,7 +555,15 @@ ACTION=$(echo "$ERROR_CTX_JSON" | node .claude/skills/bypilot-sprint-driver/scri
 |---|---|
 | `auto-fix-safe` | Apply action, log to `decisions.log`, continue |
 | `auto-fix-snapshot` | First `recovery-points.mjs` (kind=`recoveryRequired`), then apply, then continue |
-| `halt` | Snapshot tag, save state, surface to user with full context |
+| `halt` | Snapshot tag, save state, surface to user with full context. **Telegram aktifse**: fire-and-forget alert (kind=halt) + bekleyen aksiyonu net yaz. |
+
+Halt durumunda terminal'e basılan mesaj ek olarak Telegram'a da düşer:
+
+```bash
+# Halt anında — sprint-driver'ın halt branch'inde
+HALT_MSG="🛑 *bypilot HALT*\n\nNeden: ${haltReason}\nSnapshot: \`${snapshotTag}\`\n\nSenin aksiyonun: ${nextStep}\n\n/continue veya /clear ile devam ettir."
+nohup node .claude/skills/bypilot-sprint-driver/scripts/telegram-bridge.mjs send --text "$HALT_MSG" > /dev/null 2>&1 &
+```
 
 Even in `--auto` mode, `halt` honors halts. Halt list is intentionally short:
 - `security-critical` finding from security-reviewer
@@ -418,6 +596,10 @@ Everything else (branch collisions, stale locks, port conflicts, bootstrap retri
 8. **Token tracking** — her sub-agent çağrısı sonrası `state.json`'a `tokensIn/Out/duration` ekle.
 9. **Self-fix önce snapshot.** `auto-fix-snapshot` sınıfında recovery-points çağrısı atomic. Crash → snapshot kalır.
 10. **`--auto` modda soru yok.** `AskUserQuestion` çağırırsan auto-mode kontratını bozarsın.
+11. **Linear MCP çağrısı sadece linear-broker üzerinden.** Sprint-driver kendi başına `mcp__linear__*` çağırmaz; broker noop dönerse pipeline devam eder.
+12. **Linear comment volume disiplini.** Task başına max 1 status-set + 1 comment. Retry'lar, epoch boundary'leri Linear'a yansıtılmaz; sadece kesin state geçişleri.
+13. **Telegram fire-and-forget kuralı.** Alert/halt/blocker bildirimleri pipeline'ı bekletmez — `nohup ... &` ile background. ask-and-wait sadece interactive mode'da senkron çalışır; --auto'da hiç çağrılmaz.
+14. **Sprint raporu akışı bölmez.** sprint-narrator çağrısı Step 9 sonunda; pipeline zaten bitmiş olur. Multi-sprint manifestinde sıradaki sprint başlamadan önce narrator'ı `&` ile background'a at.
 
 ## Sıkıştığında
 

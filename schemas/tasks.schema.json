@@ -116,7 +116,30 @@
         "completedAt": { "type": "string", "format": "date-time" },
         "commitHash": { "type": "string" },
         "worktreePath": { "type": "string" },
-        "blockedReason": { "type": "string" }
+        "blockedReason": { "type": "string" },
+        "linearIssueId": {
+          "type": "string",
+          "pattern": "^[A-Z]+-\\d+$",
+          "description": "Linear issue identifier (e.g., BYP-29). Set by linear-broker on mirror-up, or carried in from plan-time import. Sprint-driver uses this to drive status transitions and comments."
+        },
+        "linearUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Direct link to the Linear issue. Convenience field, not load-bearing."
+        },
+        "linearStatus": {
+          "type": "string",
+          "description": "Last-known Linear state name (cache). linear-broker may update; not authoritative — Linear is source for status on its side."
+        },
+        "linearLabels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Linear label names applied to the mirrored issue."
+        },
+        "smokeUrl": {
+          "type": "string",
+          "description": "Optional URL for Playwright MCP live smoke. test-runner navigates here if integrations.playwrightMcp.enabled and frontend-touched."
+        }
       }
     }
   }
