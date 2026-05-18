@@ -2,7 +2,10 @@
 # bootstrap-worktree.sh — prepare a fresh git worktree for parallel test runs.
 # Idempotent: safe to call multiple times.
 # Steps: env files, node_modules (--ignore-scripts), .nuxt prep, auth storageState,
-#        webkit browser, port allocation.
+#        webkit browser, port allocation, [opt-in: dev server start].
+#
+# v0.2.1 — Vision verify / e2e canlı koşumları için dev server start
+# adımı (Step 7) BYPILOT_BOOTSTRAP_START_DEV=1 ile opt-in.
 
 set -euo pipefail
 
@@ -90,7 +93,51 @@ fi
 # 6. Port allocation
 bash "$SCRIPT_DIR/port-allocator.sh" "$WORKTREE" >/dev/null
 
-# 7. Verify
+# 7. (v0.2.1) Dev server start — opt-in via BYPILOT_BOOTSTRAP_START_DEV=1.
+#    Vision verify / e2e canlı koşumları için Vite (react) + Nuxt (api)
+#    arkaplanda başlatılır. Idempotent: PID dosyası varsa ve süreç hâlâ
+#    çalışıyorsa noop. Logları .bypilot-dev/{api,coiffure,app}.log'a yazar.
+if [ "${BYPILOT_BOOTSTRAP_START_DEV:-0}" = "1" ]; then
+  DEV_DIR="$WORKTREE/.bypilot-dev"
+  PID_FILE="$DEV_DIR/dev.pid"
+  mkdir -p "$DEV_DIR"
+
+  # Eğer PID hâlâ alive ise, dev server up kabul et.
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    step "dev server already running (pid $(cat $PID_FILE))"
+  else
+    # Port'ları .bypilot-ports.json'dan oku.
+    API_PORT=$(grep -o '"API_PORT"[^,}]*' "$WORKTREE/.bypilot-ports.json" | grep -o '[0-9]*' | head -1)
+    DEV_PORT=$(grep -o '"DEV_PORT"[^,}]*' "$WORKTREE/.bypilot-ports.json" | grep -o '[0-9]*' | head -1)
+    step "starting dev server (api=$API_PORT dev=$DEV_PORT)"
+
+    # turbo dev — monorepo köründen, port env'leri export.
+    (
+      cd "$WORKTREE" && \
+      API_PORT="$API_PORT" \
+      DEV_PORT="$DEV_PORT" \
+      NUXT_PORT="$API_PORT" \
+      VITE_PORT="$DEV_PORT" \
+      nohup npm run dev > "$DEV_DIR/dev.log" 2>&1 &
+      echo $! > "$PID_FILE"
+    )
+
+    # Sağlık kontrolü: en fazla 60 sn bekle, /api root'una HTTP iste.
+    for i in $(seq 1 60); do
+      if curl -fsS -o /dev/null --max-time 1 "http://localhost:$API_PORT/" 2>/dev/null; then
+        step "dev server UP (api ready in ${i}s)"
+        break
+      fi
+      sleep 1
+    done
+
+    if ! curl -fsS -o /dev/null --max-time 1 "http://localhost:$API_PORT/" 2>/dev/null; then
+      echo "[bootstrap] WARN: dev server didn't respond on :$API_PORT in 60s — see $DEV_DIR/dev.log" >&2
+    fi
+  fi
+fi
+
+# 8. Verify
 [ -f "$WORKTREE/.env" ] || { echo "[bootstrap] FAIL: .env missing" >&2; exit 2; }
 [ -f "$WORKTREE/.env.test" ] || { echo "[bootstrap] FAIL: .env.test missing" >&2; exit 2; }
 [ -f "$WORKTREE/.bypilot-ports.json" ] || { echo "[bootstrap] FAIL: ports not allocated" >&2; exit 2; }
