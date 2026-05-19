@@ -109,6 +109,51 @@
           "items": { "type": "string" },
           "description": "Specific keys/access needed. If missing in .bypilot/setup.json, task is auto-blocked."
         },
+        "linksRequirement": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^REQ-\\d+$"
+          },
+          "default": [],
+          "description": "REQ ids from docs/sprint-<N>/requirements.json that this task contributes to. Populated by task-composer at plan time. Used by requirements-verifier to map done-task summaries back to user requirements (PASS/FAIL gate)."
+        },
+        "creates": {
+          "type": "object",
+          "description": "Living Contract artifacts this task is responsible for AUTHORING. The first commit must produce these files; sibling tasks subscribe to them.",
+          "properties": {
+            "contract": {
+              "type": "string",
+              "description": "Relative path to a contract file the implementer must write. Convention: 'contracts/<component>.contract.ts' or '.contract.md'. Contract file declares public surface area (exports, props, accepted features) of a component the implementer is creating."
+            },
+            "contractExports": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Logical capabilities the contract must declare. Sibling tasks will check these. Example: ['allowsFile', 'allowsAudio', 'allowsImage'] for a chat composer contract."
+            }
+          }
+        },
+        "subscribes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Paths of contract files this task DEPENDS ON being current. context-broker injects the latest content of each into the implementer prompt at spawn time, and the conductor re-injects via Mailbox-style ContractChanged events when a sibling commits a change."
+        },
+        "mustIntegrate": {
+          "type": "string",
+          "description": "Free-text instruction describing how this task must wire into a subscribed contract. Read literally by the implementer. Example: 'Set allowsAudio=true in pilot-composer.contract.ts AND wire the AudioRecordButton into the composer's button row.'"
+        },
+        "affects": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Semantic feature tags this task touches. Used by SID-judge to detect cross-task drift (two tasks with overlapping affects must show consistent integration). Examples: 'audio-recording', 'file-upload', 'image-generation', 'rls-policy'. Free-form but conventional within a sprint."
+        },
+        "integratedWith": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "REPORTED BY the implementer in its completion JSON. Lists which subscribed contracts / affects-siblings this task actually wired up. If affects has tags but integratedWith is empty after the task finishes, sprint-driver auto-blocks it pending review."
+        },
         "notes": {
           "type": "array",
           "items": { "type": "string" }

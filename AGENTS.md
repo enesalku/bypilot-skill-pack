@@ -16,8 +16,9 @@ This is the routing table. The orchestrator consults this to decide which subage
 |---|---|---|---|
 | **loop-operator** | Decides keep-going vs pause vs escalate per wave | Top of every wave | opus |
 | **wave-picker** | Resolves DAG, picks the next runnable parallel wave | Start of each iteration | haiku |
-| **context-broker** | Builds neighborhood context per task before implementer spawn | Before each implementer Agent call | haiku |
+| **context-broker** | Builds neighborhood context per task. Reads subscribed contracts, injects `mustIntegrate` directives, lists affects-siblings. Returns `waitingForContracts` if author hasn't shipped yet | Before each implementer Agent call | haiku |
 | **checkpoint-gate** | Renders the front-facing checkpoint markdown block | After each wave commits | haiku |
+| **sid-judge** | Wave-end Semantic Intent Divergence check — detects causal-violation, contract-orphan, subscribed-but-stale, REQ-uncovered, affects-tag-mismatch. Returns bounded-retry directives | After each wave's slot tasks all done, BEFORE commit (Step 7.5) | haiku |
 | **harness-optimizer** | Reads telemetry, suggests skill/agent updates as patches | At sprint end (retrospective) | opus |
 
 ## Planner Lane (BMAD-inspired)
@@ -27,11 +28,12 @@ This lane runs *before* the orchestrator. It generates sprints from a high-level
 | Agent | Purpose | When to Use | Model |
 |---|---|---|---|
 | **interviewer** | Setup interview: keys, accounts, fixtures, env. Asks once, asks all at once, never piecemeal | First time on a new project, or when a missing prereq surfaces | haiku |
+| **elicitor** | BMAD Advanced-Elicitation adaptation. User raw text → Türkçe behavioral REQ list. 8-lens menu, ambiguity flagging, mandatory final user-approval (even in --auto). Writes `requirements.md` + `requirements.json` | `/bypilot-requirements` or `/bypilot-plan` step 0.3 | opus |
 | **researcher** | Open-source feature mining. Fetches inspiration repos, extracts candidate features with cost/value notes | Start of a major initiative, or when planner needs more candidates | opus |
-| **analyst** | Market/product framing. Turns intent → opportunity brief (jobs-to-be-done, segments, constraints) | Step 1 of `/bypilot-plan` | opus |
-| **pm** | PRD synthesizer. Turns brief + research → epics, user stories, acceptance criteria | Step 2 of `/bypilot-plan` | opus |
+| **analyst** | Market/product framing. Turns intent + requirements → opportunity brief (jobs-to-be-done, segments, constraints) | Step 1 of `/bypilot-plan` | opus |
+| **pm** | PRD synthesizer. Turns brief + research + requirements → epics, user stories, acceptance criteria | Step 2 of `/bypilot-plan` | opus |
 | **architect** | Tech design. Turns PRD → component map, schema deltas, RBAC notes, observable risks | Step 3 of `/bypilot-plan` | opus |
-| **task-composer** | DAG builder. Turns architect output → `docs/sprint-X/tasks.json` with `dependsOn`, `conflictsWith`, `testDepth`, `scope`, `files` | Step 4 of `/bypilot-plan` | opus |
+| **task-composer** | DAG builder. Turns architect output → `docs/sprint-X/tasks.json` with `dependsOn`, `conflictsWith`, `testDepth`, `scope`, `files`, `linksRequirement`, `creates.contract`, `subscribes`, `affects` | Step 4 of `/bypilot-plan` | opus |
 
 ## Implementer Lane
 
@@ -46,6 +48,7 @@ This lane runs *before* the orchestrator. It generates sprints from a high-level
 
 | Agent | Purpose | When to Use | Model |
 |---|---|---|---|
+| **requirements-verifier** | Sprint-end acceptance gate. Per-REQ PASS/CONCERNS/FAIL/WAIVED decision. Reads userOriginalPrompt + structured REQs + done task summaries + Playwright specs + screenshots (vision). Executor ≠ verifier — reads only. Returns follow-up task suggestions on FAIL/CONCERNS | sprint-driver Step 8.5 (before sprint-complete) | opus |
 | **pilot-reviewer** | Pilot tool registry, autonomy rules, RBAC | After pilot-implementer commit | opus |
 | **api-reviewer** | Drizzle schema, RLS, Zod validation, rate limit | After api-implementer commit | opus |
 | **frontend-reviewer** | React/Coiffure UI, i18n, accessibility | After coiffure-implementer commit | opus |
@@ -80,15 +83,33 @@ A task touching multiple scopes runs the **most specific** implementer for the d
 Agents communicate **via JSON return values only**. No shared mutable state. The orchestrator threads:
 
 ```
+elicitor(userPrompt) → { requirementsMdPath, requirementsJsonPath, reqCount, approvedBy }
+              ↓ (Faz-A bitti — kullanıcı onaylı)
+analyst → pm → architect → task-composer(requirements.json)
+              ↓
 wave-picker → { wave: [...taskIds] }
               ↓
-context-broker(taskId) → { neighborhood: "## Recent decisions ...\n..." }
-              ↓
-implementer(task, neighborhood) → { status, worktreePath, commitHash, summary, filesChanged }
+context-broker(taskId) → {
+  neighborhood, relatedDownstream, parallelTouchedFiles,
+  waitingForContracts, subscribedContracts, affectsTags
+}
+              ↓  (waitingForContracts empty → spawn; else defer)
+implementer(task, neighborhood) → {
+  status, worktreePath, commitHash, summary, filesChanged,
+  integratedWith, contractsAuthored, affectsHandled
+}
               ↓
 test-runner(worktreePath) → { ok, vitest, tsc, playwright, durations }
               ↓
 debugger(worktreePath, failureLog) → { fixed, rootCause, commitHash, escalate }
+              ↓  (wave-end, before commit)
+sid-judge(waveTasks, currentContracts, requirements) → {
+  ok, drifts, shouldRetry, shouldBlock, shouldCommitAsIs
+}
+              ↓  (sprint-end, before Step 9)
+requirements-verifier(requirements, userOriginalPrompt, doneTasks, screenshots) → {
+  perRequirement[], gateDecision: "PASS"|"PARTIAL"|"FAIL", followUpTasks[]
+}
 ```
 
-Every step is atomic. Failures bubble up to loop-operator which decides next move.
+Every step is atomic. Failures bubble up to loop-operator which decides next move. Living Contract events (ContractChanged) flow via the Mailbox primitive — sibling worktrees' `.bypilot-mailbox/inbox.jsonl` files, re-injected by context-broker on next respawn.

@@ -38,6 +38,33 @@ Before anything else, check `.bypilot/setup.json`. If missing or stale (>14 days
 
 Also read `.bypilot/integrations.json`. If file is missing → invoke setup. If `linear.enabled: false` → log info and continue **without** Linear sourcing (skip Step 0.5).
 
+### Step 0.3 — Requirements gate (user-visible intent kontratı, ZORUNLU)
+
+Plan zinciri analyst'a başlamadan önce **kullanıcı isterlerinin** kontratı disk'te olmalı. Sprint klasörünü belirle (komutta `--sprint sprint-11` verildiyse onu kullan; yoksa `sprints.manifest.json.active` listesindeki sonuncu veya yeni numara):
+
+```bash
+REQ_PATH="${SPRINT_FOLDER}/requirements.json"
+if [ ! -f "$REQ_PATH" ]; then
+  # Yok — bypilot-requirements skill'ini zincirle
+  /bypilot-requirements "${USER_PROMPT_VERBATIM}"
+  # ${MODE_FLAG:+--auto}
+fi
+
+# Şimdi var olmalı; yine yoksa halt
+[ -f "$REQ_PATH" ] || { echo "Requirements missing — user did not approve. Plan halted."; exit 1; }
+
+# Schema validation
+node -e "
+  const d = require('./${REQ_PATH}');
+  if (!d.requirements || !d.requirements.length) process.exit(1);
+  if (!d.approvedBy) process.exit(1);
+"
+```
+
+Yani plan **kullanıcı onaylı bir `requirements.json` olmadan başlamaz**. `--auto` modu bile bu kuralı atlayamaz (elicitor zaten tek final onay sorusunu çalıştırır).
+
+requirements.json analyst/PM/architect/composer'ın hepsine input olarak akar. PM stories'i REQ id'leriyle hizalar; composer her task'a `linksRequirement` doldurur.
+
 ### Step 0.5 — Linear pre-pass (if `linear.enabled`)
 
 Linear, *kaynak değil aynadır*. Bu adımda Linear'ı **input** olarak kullan, ama AI'nın genişletme/parçalama/iptal etme yetkisi korunur.
@@ -112,7 +139,7 @@ Analyst bu input'u **temel** olarak kullanır ama **birebir kopyalamak zorunda d
 
 ### Step 1 — Analyst pass
 
-Invoke `analyst` agent with: goal + project context + research memo (if any). Returns `brief.md`:
+Invoke `analyst` agent with: goal + project context + **`requirements.json` (kullanıcı isterleri)** + research memo (if any). Analyst, opportunity / JTBD analizini yaparken kullanıcı isterlerini başlangıç noktası kabul eder — yeni "neden şimdi" çıkarmaya zorlanmaz. Returns `brief.md`:
 
 - **Opportunity** — Why now, what's the pull?
 - **Jobs-to-be-done** — Whose job, in what context?
@@ -206,6 +233,11 @@ Checks:
 - Every `files` entry is a valid relative path
 - `testDepth` is in enum
 - No two tasks share `priority: 1` without dep edge between them
+- **Requirement coverage:** her `userVisible: true` REQ en az bir task'ın `linksRequirement`'ında olmalı (composer Step 2.5 invariant'ı)
+- **Contract author tekliği:** her `creates.contract` path'i sadece TEK task tarafından sahiplenilmiş olmalı (Mailbox tek-yazar kuralı)
+- **Subscribe-sources resolvable:** her `subscribes` path'i bir task'ın `creates.contract`'inde tanımlı olmalı veya halihazırda repo'da var olmalı
+
+Bunlardan biri fail ederse composer'a `--fix` ile dön (max 2 retry); hâlâ fail ise plan halt — kullanıcıya net hata.
 
 ### Step 6 — Persist
 
@@ -297,6 +329,8 @@ If user already has tasks (a list, a doc, etc.), `/bypilot-plan --import <path>`
 5. **Linear input, not constraint.** Linear issue listesi planlama girdisidir; AI parçalayabilir/birleştirebilir/refactor-prep ekleyebilir. Her sapma gerekçeli loglanır.
 6. **Linear MCP yoksa noop.** `integrations.json.linear.enabled === false` ise Step 0.5 ve Step 6.5 tamamen atlanır; plan eskisi gibi local çalışır.
 7. **Linear-broker dışında MCP çağrısı yok.** Plan skill `mcp__linear__*` tool'larını doğrudan çağırmaz — daima linear-broker üzerinden.
+8. **Requirements gate atlanamaz.** Step 0.3 zorunlu — `requirements.json` onaylı olmadan analyst başlatılmaz. Auto mode bile bu kuralı atlayamaz.
+9. **REQ id'leri immutable.** Plan zinciri requirements.json'a yazmaz, sadece okur. Düzeltme gerekiyorsa kullanıcı `/bypilot-requirements --extend` veya yeni sprint açar.
 
 ## Sıkıştığında
 

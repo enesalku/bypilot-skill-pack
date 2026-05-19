@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bypilot.ai/schemas/requirements.schema.json",
+  "title": "bypilot requirements.md frontmatter + sidecar JSON",
+  "description": "Sprint-level user-facing requirements. One row = one acceptance contract. Written in plain Turkish by the elicitor agent, owned by the user (immutable to downstream agents). Linked to tasks via REQ-N ids. Consumed by requirements-verifier at sprint-end.",
+  "type": "object",
+  "required": ["sprint", "createdAt", "userOriginalPrompt", "requirements"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "sprint": {
+      "type": "string",
+      "description": "Sprint identifier matching the parent folder, e.g. '11' or '11-customer-attachments'."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "userOriginalPrompt": {
+      "type": "string",
+      "description": "The user's raw, unedited free-text request — preserved verbatim. Verifier uses this for intent-drift detection alongside the structured rubric below."
+    },
+    "elicitationLenses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "six-thinking-hats",
+          "pre-mortem",
+          "inversion",
+          "red-team-blue-team",
+          "socratic-questioning",
+          "stakeholder-mapping",
+          "first-principles",
+          "analogical-reasoning",
+          "skipped"
+        ]
+      },
+      "description": "Which BMAD-inspired advanced-elicitation lenses the user picked. 'skipped' means no lens — direct extraction."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["interactive", "auto"],
+      "description": "How requirements were captured. Auto mode still requires a single user confirmation at the end (single AskUserQuestion gate)."
+    },
+    "approvedBy": {
+      "type": "string",
+      "description": "user | auto-confirmed. Required: the elicitor cannot persist this file until the user (or in auto mode, the AI's confirmation step) approves."
+    },
+    "approvedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/requirement" }
+    }
+  },
+  "definitions": {
+    "requirement": {
+      "type": "object",
+      "required": ["id", "description", "surface", "userVisible"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^REQ-\\d+$",
+          "description": "Stable id within the sprint. REQ-1, REQ-2, ... Tasks reference these via linksRequirement."
+        },
+        "description": {
+          "type": "string",
+          "description": "One short, behavioral, Turkish sentence the user can verify by eye or by trying. Format guideline: 'Hangi yüzeyde + ne görür + ne yapar / ne olur.' Avoid jargon."
+        },
+        "surface": {
+          "type": "string",
+          "description": "Which user surface this lives on. Free-form but conventional: 'pilot-widget', 'chatbot-test-tab', 'customer-chat', 'dashboard-conversations', 'admin-knowledge-base', 'api-only' (for non-UI), etc."
+        },
+        "userVisible": {
+          "type": "boolean",
+          "description": "True if the user can verify this by opening the app. Drives whether vision-verify (Playwright screenshot + Sonnet vision) is required for this REQ at sprint-end."
+        },
+        "linkedTasks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Task ids (from tasks.json) that contribute to this requirement. Populated by task-composer at plan time; cross-checked by verifier at sprint-end."
+        },
+        "verificationHints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional hints from the user/elicitor on how to test: 'http://localhost:3001/chatbot → Test sekmesi → mesaj kutusunun sağında 📎 ikonu görmeli'."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "verified", "missing", "ambiguous", "waived"],
+          "default": "pending",
+          "description": "Set by requirements-verifier at sprint-end. pending = not yet checked. verified = PASS. missing = FAIL. ambiguous = CONCERNS (verifier could not tell). waived = user explicitly excluded (verifier asked, user said skip)."
+        },
+        "verifierNotes": {
+          "type": "string",
+          "description": "Verifier's one-paragraph rationale: which task addressed this, which spec covers it, what visual evidence (if vision-verify ran)."
+        },
+        "originLens": {
+          "type": "string",
+          "description": "Which elicitation lens (if any) surfaced this requirement. Helpful for audit: 'pre-mortem detected this risk'."
+        },
+        "ambiguityFlag": {
+          "type": "string",
+          "description": "If the elicitor saw conflict/ambiguity in the user's prompt, this captures what the elicitor asked the user to clarify (and the resolution). Preserved for verifier context."
+        }
+      }
+    }
+  }
+}

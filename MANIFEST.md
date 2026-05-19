@@ -1,8 +1,8 @@
 # MANIFEST
 
 **Package:** `bypilot`
-**Version:** `0.1.0-alpha.1`
-**Status:** Pre-release. F0 + F1 in progress.
+**Version:** `0.2.0-alpha.1`
+**Status:** Pre-release. F0 + F1 done. Requirement Lifecycle + Living Contract + Acceptance Gate (F1.5) added 2026-05-14.
 
 ## What's Shipping
 
@@ -13,13 +13,35 @@
 - Schemas (tasks, sprints-manifest, instinct)
 - LICENSE (MIT)
 
-### F1 (sprint-driver MVP) — in progress
+### F1 (sprint-driver MVP) — done
 - `skills/sprint-driver/SKILL.md` + workflows + scripts
 - `agents/orchestrator/{loop-operator, wave-picker, context-broker, checkpoint-gate}.md`
 - `agents/implementer/{pilot,coiffure,api,e2e}-implementer.md`
 - `agents/runner/{test-runner, debugger}.md` (adapted from existing)
 - `scripts/wave-picker.mjs` (DAG resolver)
 - `scripts/lib/{git-utils, worktree, tasks-loader, port-allocator, bootstrap}.js`
+
+### F1.5 (Requirement Lifecycle + Living Contract + Acceptance Gate) — done 2026-05-14
+
+Closes the "Sprint-9 audio gap" pattern. Three layered defenses against parallel-task feature loss + sprint-end silent acceptance failure.
+
+**Requirements skill (Faz-A — kullanıcı zorunlu interactive)**
+- `skills/requirements/SKILL.md` + `/bypilot-requirements` command
+- `agents/planner/elicitor.md` — BMAD Advanced-Elicitation menu adaptation
+- `schemas/requirements.schema.json` — REQ-N pattern, userOriginalPrompt preserved verbatim
+
+**Living Contract coordination**
+- `schemas/tasks.schema.json` extended — `linksRequirement`, `creates.contract`, `subscribes`, `mustIntegrate`, `affects`, `integratedWith`
+- `agents/planner/task-composer.md` — requirement traceability invariant + contract single-author rule
+- `agents/orchestrator/context-broker.md` — contract injection (Step 5.3-5.8), `waitingForContracts` defer
+- `agents/orchestrator/sid-judge.md` (new, Haiku) — wave-end Semantic Intent Divergence detector, 5 drift classes, bounded retry
+- `skills/sprint-driver/SKILL.md` — Step 6.7 integratedWith sanity, Step 7 ContractChanged Mailbox broadcast, Step 7.5 SID-judge dispatch
+
+**Acceptance Verification Gate**
+- `agents/reviewer/requirements-verifier.md` (new, Opus) — per-REQ PASS/CONCERNS/FAIL/WAIVED
+- Vision verify — when `integrations.visionVerify.enabled` + REQ userVisible, Playwright screenshot → multimodal Claude vision
+- `skills/sprint-driver/SKILL.md` Step 8.5 — verifier dispatch, bounded retry (1 cycle), 2nd FAIL → halt + human escalation
+- `skills/setup/SKILL.md` — `visionVerify` integration template
 
 ### Not yet shipping (F2-F8 planned)
 - Parallel wave executor with port allocation (F2)

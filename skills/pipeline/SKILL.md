@@ -1,6 +1,6 @@
 ---
 name: bypilot-pipeline
-description: bypilot end-to-end zinciri (setup → research → plan → sprint-driver) tek komutta koşturur. Her adımı sırayla çağırır, çıktıları sonraki adıma feed eder. Fail noktasında yumuşak duraklar, kullanıcıya tek-soru sorar.
+description: bypilot end-to-end zinciri (setup → discovery → research → plan → sprint-driver) tek komutta koşturur. Her adımı sırayla çağırır, çıktıları sonraki adıma feed eder. Fail noktasında yumuşak duraklar, kullanıcıya tek-soru sorar.
 origin: bypilot
 disable-model-invocation: true
 allowed-tools:
@@ -13,7 +13,12 @@ allowed-tools:
   - TaskUpdate
 ---
 
-You are the **pipeline conductor**. You don't think — you sequence the four primary skills (`setup`, `research`, `plan`, `run`) so the user can go from "I have an idea" to "code committed" in one command.
+You are the **pipeline conductor**. You don't think — you sequence the five primary skills (`setup`, `discovery`, `research`, `plan`, `run`) so the user can go from "I have an idea" to "code committed" in one command.
+
+**Discovery vs Research ayrımı (kritik):**
+- **Discovery** = "Bu üründe HANGİ özellikler olsun?" — rakip+OSS feature mining, kategorize matrix, kullanıcıya teknik olmayan kategori-başına multi-select soru. Ürün yönü kararları.
+- **Research** = "Kararlaştırılan özellikleri NASIL implement edelim?" — adoption pattern, kod desenleri, effort/value, risk. Teknik kararlar.
+- Discovery atlanırsa: yeni modül planlamasında ürün/feature yönü kaybolur, plan teknik ama yarım çıkar (2026-05-19 Studio sprint feedback'i). Sadece "mevcut bir modülün uzantısı" işlerinde atlanabilir.
 
 ## When to Use
 
@@ -29,22 +34,27 @@ Check `.bypilot/pipeline-state.json` if it exists. State carries: `goal`, `lastC
 
 Also check `.bypilot/integrations.json`. If absent → setup will create it. If present but `linear.lastVerifiedAt` >14 days old → setup re-runs the probe; pipeline does NOT bypass.
 
-### Step 2 — Run the four skills in sequence
+### Step 2 — Run the five skills in sequence
 
 ```
-[setup]    → if .bypilot/setup.json missing or stale → invoke /bypilot-setup
-[research] → if user-provided goal AND no recent memo → invoke /bypilot-research <goal>
-[plan]     → if no fresh tasks.json for goal → invoke /bypilot-plan
-[run]      → if pending tasks → invoke /bypilot-sprint-driver
+[setup]     → if .bypilot/setup.json missing or stale → invoke /bypilot-setup
+[discovery] → if NEW product/module (no prior feature matrix for goal) → invoke /bypilot-discovery <goal>
+              SKIP only if goal is "extend existing module" (e.g. "Sprint-12 follow-up bugs").
+[research]  → if user-provided goal AND no recent memo → invoke /bypilot-research <goal>
+              Uses discovery feature decisions if present.
+[plan]      → if no fresh tasks.json for goal → invoke /bypilot-plan
+              Uses discovery + research outputs together.
+[run]       → if pending tasks → invoke /bypilot-sprint-driver
 ```
 
 After each skill, persist state and emit a brief summary line:
 
 ```
-✓ setup    — 8/8 keys, 0 blockers (1m 12s)
-✓ research — 3 features recommended (3m 04s)
-✓ plan     — sprint-4, 14 tasks, 5 ready (2m 48s)
-⟳ run      — wave 1/4 in progress...
+✓ setup     — 8/8 keys, 0 blockers (1m 12s)
+✓ discovery — 22 ürün, 12 kategori, 47 feature kullanıcı onayıyla (8m 20s)
+✓ research  — 3 OSS adoption önerisi (3m 04s)
+✓ plan      — studio-sprint-1, 14 tasks, 5 ready (2m 48s)
+⟳ run       — wave 1/4 in progress...
 ```
 
 ### Step 3 — Soft-stop on hard gates
@@ -52,6 +62,8 @@ After each skill, persist state and emit a brief summary line:
 The pipeline does not bypass hard gates:
 
 - `setup` returns blockers → ask user once: "8 tasks blocked by missing META keys. Continue without WhatsApp tasks (auto-skip) or pause?"
+- `discovery` returns zero adopted features → ask: "Discovery sonucu hiçbir feature seçilmedi. Hedefi daralt veya durdur?"
+- `discovery` for non-greenfield goal (extending existing module) → auto-skip with reason logged.
 - `plan` produces no tasks → ask: "Goal yielded 0 tasks. Refine goal or stop?"
 - `run` hits a `blocked` task → already returns to user via checkpoint-gate.
 

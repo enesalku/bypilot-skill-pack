@@ -169,11 +169,15 @@ Agent({
   prompt: `Build neighborhood for task ${taskId}.
     Read: docs/CONTEXT.md, docs/decisions.log (last 30 lines — CRITICAL: pick up commits from sibling tasks committed since this driver started),
     docs/sprint-*/tasks.json (find downstream of ${taskId}),
+    docs/sprint-*/requirements.json (REQ traceability — bu task hangi REQ'lere katkı yapacak),
     .bypilot/recovery-log.jsonl (last 5 entries),
     git log --oneline -15.
-    Return JSON: { neighborhood: "<markdown brief>", relatedDownstream: [...], parallelTouchedFiles: [...] }`
+    Living Contract pass: oku tüm .subscribes path'lerini, .creates.contract varsa not düş, .mustIntegrate'i en üste yerleştir, .affects etiketleriyle sibling task'ları listele.
+    Return JSON: { neighborhood, relatedDownstream, parallelTouchedFiles, waitingForContracts, subscribedContracts, affectsTags }`
 })
 ```
+
+**`waitingForContracts` non-empty ise:** task'ı bu wave'de SPAWN ETME. Onu pending'e geri al; yazıcı bittiğinde re-claim (Step 1'in claim mantığı bunu sibling-done sinyaliyle yakalar).
 
 If any context-broker returns empty neighborhood → halt that task, mark blocked. Implementer must not run blind.
 
@@ -223,7 +227,16 @@ Agent({
   ## Sibling-touched files (committed in this driver run)
   ${(neighborhood.parallelTouchedFiles || []).join('\n')}
 
-  Return JSON: { status, commitHash, filesChanged, summary, blockedReason? }`
+  ## Subscribe edilen kontratlar (Living Contracts)
+  Snapshot zaten neighborhood'da yukarıda. Edit/write yapmadan önce bu kontratları izle. mustIntegrate dolu ise direktifi uygula.
+
+  ## Reporting kontrat
+  Done JSON'unda **şu alanları doldur:**
+  - integratedWith: subscribes'tan hangilerini wire ettin (yoksa [] ama o zaman task auto-blocked)
+  - contractsAuthored: creates.contract varsa ilk commit'te yazıldığını teyit et (path)
+  - affectsHandled: affects etiketlerinden hangi feature'ları gerçekten dokunduğun
+
+  Return JSON: { status, commitHash, filesChanged, summary, integratedWith, contractsAuthored, affectsHandled, blockedReason? }`
 })
 ```
 
@@ -303,6 +316,47 @@ if !result.ok:
     apply decision (default: snapshot bundle, mark blocked, continue)
 ```
 
+### Step 6.7 — Integration sanity (commit ÖNCESİ, Sprint-9 audio gap önleme)
+
+Implementer done JSON'unu döndü, test-runner yeşil. Commit etmeden ÖNCE:
+
+```bash
+# Task'ın affects etiketi var mı?
+HAS_AFFECTS=$(jq -r ".tasks[] | select(.id == \"$TASK_ID\") | .affects | length" "docs/$SPRINT_DIR/tasks.json")
+
+# Implementer integratedWith doldurdu mu?
+IMPL_INTEGRATED=$(echo "$IMPL_DONE_JSON" | jq -r '.integratedWith | length')
+
+if [ "$HAS_AFFECTS" -gt 0 ] && [ "$IMPL_INTEGRATED" -eq 0 ]; then
+  # Affects var ama integratedWith boş — task component yarattı/etkiledi ama hiçbir sibling kontratına bağlanmadı
+  # Implementer'a TEK bir geri dönüş şansı ver (mid-task reprompt):
+  RETRY_JSON=$(Agent({
+    subagent_type: "<scope>-implementer",
+    description: "Integration retry for " + task.title,
+    prompt: `Önceki implementasyonun affects etiketinde [${affectsList}] gözüküyor ama integratedWith boş döndün.
+      Sprint-9'da bu hata pilot widget'taki audio butonu eksik kalmasına yol açtı.
+
+      Şu sibling task'ları kontrol et: ${siblingsWithSameAffects}
+      Onlara bağlanan bir entegrasyon noktası var mı? Varsa şimdi yap, integratedWith'i doldur ve döndür.
+      Yoksa, "integration not applicable: <neden>" açıklamasıyla integratedWith: ["not-applicable:<sebep>"] döndür.
+      Worktree: ${worktreePath}
+      Return JSON: { integratedWith, additionalCommitHash?, summary }`
+  }))
+
+  # Hâlâ boş ise → task auto-blocked, snapshot al, kullanıcıya bildir (telegram alert)
+  if [ "$(echo "$RETRY_JSON" | jq -r '.integratedWith | length')" -eq 0 ]; then
+    SKIP_REASON="affects:${affectsList} but no integration wired after retry"
+    # commit-task-state ile blocked yaz, snapshot tag, slot serbest
+    node .claude/skills/bypilot-sprint-driver/scripts/commit-task-state.mjs \
+      --task "$TASK_ID" --status blocked \
+      --reason "$SKIP_REASON" --epoch "$EPOCH_NUM"
+    continue
+  fi
+fi
+```
+
+Bu adım Sprint-9 audio-gap hatasının kaynakta önlenmesidir: T4 affects:`audio-recording` etiketli, integratedWith boş kalmışsa, retry'da "PilotComposer'a bağladın mı?" diye sorulur; hâlâ bağlanmamışsa task blocked, manuel inceleme.
+
 ### Step 7 — Per-task atomic commit (slot-free event)
 
 When a task completes (impl green + tests green) OR is blocked:
@@ -331,6 +385,46 @@ for sib in "${busyTasks[@]}"; do
     > "${sib.worktreePath}/.bypilot-notify.json"
 done
 ```
+
+**Yeni — ContractChanged Mailbox enjeksiyonu (paralel kayıp önleme):**
+
+Eğer biten task `creates.contract` veya bu pattern'a uyan bir dosya edit ettiyse, **subscribe eden sibling task'ların worktree'sine kontratın güncel halini yaz + agent'ın bir sonraki tool call'unda görmesi için `.bypilot-contract-changed.jsonl` (append-only) ekle:
+
+```bash
+# Bu task hangi kontratları yazdı/değiştirdi?
+TOUCHED_CONTRACTS=$(echo "$FILES_JSON" | jq -r '.[]' | grep -E '\.contract\.(ts|md|json)$' || true)
+
+for CONTRACT in $TOUCHED_CONTRACTS; do
+  # Kim subscribe ediyor?
+  SUBSCRIBERS=$(jq -r ".tasks[] | select(.subscribes // [] | index(\"$CONTRACT\")) | select(.status == \"in_progress\") | .id" "docs/$SPRINT_DIR/tasks.json")
+
+  for SUB_ID in $SUBSCRIBERS; do
+    SUB_WT=$(jq -r ".tasks[] | select(.id == \"$SUB_ID\") | .worktreePath" "docs/$SPRINT_DIR/tasks.json")
+
+    # 1) Kontratın yeni snapshot'ını sib worktree'ye kopyala (read-only reference)
+    mkdir -p "$SUB_WT/.bypilot-mailbox"
+    cp "$CONTRACT" "$SUB_WT/.bypilot-mailbox/$(basename $CONTRACT)"
+
+    # 2) Append event log — implementer'ın notifier-broker prompt'una takipte enjekte edilecek
+    echo "{\"event\":\"ContractChanged\",\"from\":\"$TASK_ID\",\"contract\":\"$CONTRACT\",\"ts\":\"$(date -u +%FT%TZ)\"}" \
+      >> "$SUB_WT/.bypilot-mailbox/inbox.jsonl"
+
+    # 3) Notifier-broker üzerinden mid-flight inject (async) — implementer hâlâ çalışıyorsa
+    Agent({
+      subagent_type: "notifier-broker",
+      description: "ContractChanged inject for " + SUB_ID,
+      prompt: `mode: agent-inbox-inject
+        agentId: "${SUB_ID}"
+        kind: "ContractChanged"
+        contractPath: "${CONTRACT}"
+        contractBody: <inline snapshot, max 3KB>
+        ts: "${ISO}"`
+    })
+  done
+done
+```
+
+**Not — `mode: agent-inbox-inject`:** notifier-broker'ın yeni alt-modu (broker güncellemesi gerekli). İlk fazda fallback olarak `.bypilot-mailbox/inbox.jsonl`'a yazmak yeterli — implementer her tool call öncesi bu dosyayı kontrol etmek zorunda (context-broker bunu prompt'a injekte ediyor).
 
 **Linear sync (done / blocked):** if `task.linearIssueId` and `integrations.linear.enabled`, ONE broker call per task — never per attempt:
 
@@ -376,7 +470,50 @@ ${failureLogTail}
 
 Comment volume disiplini: her task için maks **1 status-set + 1 comment**. Debugger retry'larında ek Linear çağrısı yok.
 
-Remove the task from `busyTasks`, free the slot, increment `epochCompleted`, jump to Step 8 (epoch check) and back to Step 1.
+Remove the task from `busyTasks`, free the slot, increment `epochCompleted`, jump to Step 7.5 (SID-judge wave-end) and back to Step 1.
+
+### Step 7.5 — SID-judge wave-end check (semantic conflict, ZORUNLU)
+
+Bir wave'in tüm slot'ları tamamlandığında (yani `busyTasks.length === 0` veya epoch boundary tetiklenmek üzere), commit-state Linear sync zaten yapıldı ama epoch UI'sı çıkmadan ÖNCE:
+
+```
+JUDGE=$(Agent({
+  subagent_type: "sid-judge",
+  description: "SID check wave-end",
+  prompt: `mode: wave-end
+    sprintFolder: "${SPRINT_FOLDER}"
+    waveTasks: ${JSON.stringify(waveDoneList)}
+    currentContracts: ${JSON.stringify(contractsMap)}  // path -> body
+    requirements: ${JSON.stringify(reqsArray)}`
+}))
+```
+
+JUDGE çıktısına göre:
+
+| `shouldCommitAsIs` | Aksiyon |
+|---|---|
+| `true` | Step 8'e geç (epoch check / UI). Drift yok. |
+| `false` + `shouldRetry: [...]` | Her retry hedefini sırayla **mid-task reprompt** ile re-spawn et (max 2 retry-cycle). Retry sonra SID-judge tekrar koş. |
+| `false` + `shouldBlock: [...]` | 2 retry sonrası hâlâ drift varsa o task'ları `commit-task-state --status blocked --reason "sid-drift: ${kind}"` ile bloke et, snapshot tag, kullanıcıya Telegram alert (`kind: sid-blocker`). |
+
+Retry prompt'u, JUDGE'ın `suggestedAction`'ı + ilgili drift kartı:
+
+```
+Agent({
+  subagent_type: "<scope>-implementer",
+  description: "SID retry: " + driftKind,
+  prompt: `Wave-end SID-judge bir drift tespit etti:
+    Kind: ${drift.kind}
+    Evidence: ${drift.evidence}
+    Suggested action: ${drift.suggestedAction}
+    Worktree: ${worktreePath}
+
+    Bu drift düzeltilmeden task done sayılmıyor. Suggested action'ı uygula, kontratı/kodu güncelle, ek commit at, integratedWith'i güncelle.
+    Return JSON: { fixed, additionalCommitHash, integratedWith, summary }`
+})
+```
+
+SID-judge tek bir wave-end başına maksimum **2 retry-cycle** koşturur. Bu çerçeve Voyager-style "bounded retry" kuralından gelir — sonsuz loop tehlikesi yok.
 
 ### Step 8 — Epoch check (advisory boundary)
 
@@ -431,9 +568,83 @@ If `boundary === true`:
 
 Increment epoch counter regardless of mode.
 
+### Step 8.5 — Acceptance Verification Gate (ZORUNLU, Step 9 öncesi)
+
+`pending === 0 && in_progress === 0` koşulu sağlandı ama henüz **sprint kapanmadı**. Önce kullanıcı isterleri karşılandı mı diye kontrol et.
+
+```bash
+# requirements.json var mı?
+REQ_PATH="${SPRINT_FOLDER}/requirements.json"
+if [ ! -f "$REQ_PATH" ]; then
+  echo "[bypilot:sprint-driver] WARNING: requirements.json yok — bu sprint elicitor adımını atlamış. Verifier atlanıyor; eski davranışla devam."
+  # Step 9'a atla; geriye dönük uyumluluk
+else
+  echo "[bypilot:sprint-driver] Step 8.5 — acceptance verification"
+fi
+```
+
+requirements.json varsa verifier çalışır:
+
+```
+VERIFY=$(Agent({
+  subagent_type: "requirements-verifier",
+  description: "Sprint acceptance verification",
+  prompt: `mode: sprint-end
+    sprintFolder: "${SPRINT_FOLDER}"
+    requirements: <docs/sprint-N/requirements.json'dan oku>
+    userOriginalPrompt: <requirements.json.userOriginalPrompt>
+    doneTasks: <tasks.json status=done liste, includes summary, commitHash, linksRequirement>
+    blockedTasks: <tasks.json status=blocked liste>
+    playwrightSpecs: <find e2e/sprint-${N}/ -name '*.spec.ts'>
+    playwrightScreenshots: <find test-results -name '*.png' -mmin -180>
+    integrations: { visionVerify: <.bypilot/integrations.json.visionVerify> }`
+}))
+```
+
+Verifier `gateDecision` döndü:
+
+| Decision | Aksiyon (interactive) | Aksiyon (auto) |
+|---|---|---|
+| `PASS` | Step 9'a geç (sprint kapanır) | Step 9'a geç |
+| `PARTIAL` | AskUserQuestion: "X CONCERNS var. (a) Sprint'i kapat ve follow-up sprintle hallet, (b) Şimdi mini-wave ile çöz, (c) WAIVED işaretle." | Otomatik (b) — mini-wave koş, sonra retry |
+| `FAIL` | AskUserQuestion: "Y FAIL var. (a) Otomatik follow-up wave koş, (b) Halt + manuel inceleme." | Otomatik (a) — bounded retry |
+
+**Retry mekanizması (Voyager bounded retry):**
+
+```bash
+RETRY_COUNT=$(node -e "console.log(state.acceptanceRetryCount || 0)")
+
+if [ "$VERIFY_DECISION" = "FAIL" ] && [ "$RETRY_COUNT" -lt 1 ]; then
+  # Follow-up task'ları tasks.json'a append et
+  for FT in $(echo "$VERIFY" | jq -c '.followUpTasks[]'); do
+    node .claude/skills/bypilot-sprint-driver/scripts/append-followup-task.mjs \
+      --task "$FT" --sprint "${SPRINT_FOLDER}"
+  done
+
+  # State'e retry counter yaz
+  node -e "state.acceptanceRetryCount = (state.acceptanceRetryCount||0)+1; saveState()"
+
+  # Step 1'e dön — mini-wave başlasın
+  GOTO Step 1
+fi
+
+if [ "$VERIFY_DECISION" = "FAIL" ] && [ "$RETRY_COUNT" -ge 1 ]; then
+  # İkinci kez fail — halt + insan eskalasyonu (Voyager kuralı: bounded retry)
+  TG_ALERT="🛑 *Sprint-${N} acceptance FAIL (2. tur)*\n\n$(echo $VERIFY | jq -r .rationale)\n\nManuel inceleme gerekli — verifier raporu: docs/sprint-${N}/verification.md"
+  nohup node .../telegram-bridge.mjs send --text "$TG_ALERT" > /dev/null 2>&1 &
+
+  # decisions.log + verification.md persist
+  echo "$VERIFY" > "${SPRINT_FOLDER}/verification.md.json"
+  # halt — Step 9'a geçmez, sprint açık kalır
+  exit 1
+fi
+```
+
+Verifier raporu `docs/sprint-${N}/verification.md` olarak yazılır (her zaman, gateDecision farketmez). sprint-narrator Step 9'da bu dosyayı okuyup raporuna entegre eder.
+
 ### Step 9 — Sprint complete
 
-When `pending === 0 && in_progress === 0`:
+When `pending === 0 && in_progress === 0` **AND verifier `PASS` (veya kullanıcı manuel onayladı)**:
 
 ```bash
 node .claude/skills/bypilot-sprint-driver/scripts/recovery-points.mjs tag \
@@ -600,6 +811,10 @@ Everything else (branch collisions, stale locks, port conflicts, bootstrap retri
 12. **Linear comment volume disiplini.** Task başına max 1 status-set + 1 comment. Retry'lar, epoch boundary'leri Linear'a yansıtılmaz; sadece kesin state geçişleri.
 13. **Telegram fire-and-forget kuralı.** Alert/halt/blocker bildirimleri pipeline'ı bekletmez — `nohup ... &` ile background. ask-and-wait sadece interactive mode'da senkron çalışır; --auto'da hiç çağrılmaz.
 14. **Sprint raporu akışı bölmez.** sprint-narrator çağrısı Step 9 sonunda; pipeline zaten bitmiş olur. Multi-sprint manifestinde sıradaki sprint başlamadan önce narrator'ı `&` ile background'a at.
+15. **`subscribes` dolu task yazıcı bitmeden başlamaz.** context-broker `waitingForContracts` döndürdüyse task pending'e geri alınır; yazıcı task biter bitmez slot-free event tetiklenir ve bu task re-claim edilir.
+16. **`creates.contract` task'ı ilk commit'inde kontratı yazmadan ikinci edit yapamaz.** Implementer prompt'unda bu zorunlu kısım olarak vurgulanır.
+17. **`integratedWith` boş ama `affects` dolu → auto-blocked.** Step 6.7 retry zaten verir; ikinci pas boşsa task blocked, snapshot, kullanıcı bilgilendirilir.
+18. **ContractChanged event Mailbox-style enjekte edilir.** Sibling worktree'lerin `.bypilot-mailbox/inbox.jsonl`'ı güncellenir + notifier-broker `agent-inbox-inject` ile mid-flight bilgilendirir.
 
 ## Sıkıştığında
 

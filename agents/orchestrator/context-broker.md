@@ -55,17 +55,124 @@ Tasks that have `dependsOn: [..., "$TASK_ID", ...]` will inherit this task's out
 jq -r ".tasks[] | select(.dependsOn | index(\"$TASK_ID\")) | \"- \" + .id + \": \" + .title" docs/sprint-*/tasks.json
 ```
 
+### Step 5.3 — Living Contract subscriptions (yeni — paralel kayıpları önler)
+
+Task'ın `subscribes: [...]` listesindeki her contract dosyasının **en güncel halini** oku ve neighborhood'a göm. Implementer bu kontrata göre kod yazacak; eski snapshot okuması drift sebebi.
+
+```bash
+# Task spec'ten subscribe edilen kontratları çıkar
+SUBS=$(jq -r ".tasks[] | select(.id == \"$TASK_ID\") | .subscribes[]?" "docs/$SPRINT_DIR/tasks.json")
+
+CONTRACT_SECTION=""
+for C in $SUBS; do
+  if [ -f "$C" ]; then
+    BODY=$(cat "$C")
+    CONTRACT_SECTION="${CONTRACT_SECTION}
+
+### Subscribe edilen kontrat: ${C}
+\`\`\`
+${BODY}
+\`\`\`
+"
+  else
+    # Henüz yazılmamış (creator hâlâ koşuyor) — bekle veya not düş
+    AUTHOR=$(jq -r ".tasks[] | select(.creates.contract == \"$C\") | .id" "docs/$SPRINT_DIR/tasks.json")
+    CONTRACT_SECTION="${CONTRACT_SECTION}
+
+### Kontrat henüz YOK: ${C}
+Yazıcı task: ${AUTHOR} (bitmeden başlayamazsın — yazıcı tamamlandığında re-spawn olacaksın)
+"
+  fi
+done
+```
+
+Eğer subscribes dolu ve bir kontrat henüz disk'te yoksa, **return JSON'da `waitingForContracts: [list]` field'i set et** — driver Step 4'te bu task'ı spawn etmez, yazıcı bitince re-claim eder.
+
+### Step 5.6 — Living Contract author hatırlatması
+
+Task'ın `creates.contract` set ise: implementer'a **ilk commit'in zorunlu içeriği** olarak kontrat dosyasının yazılması gerektiğini belirt.
+
+```bash
+CONTRACT=$(jq -r ".tasks[] | select(.id == \"$TASK_ID\") | .creates.contract // empty" "docs/$SPRINT_DIR/tasks.json")
+EXPORTS=$(jq -r ".tasks[] | select(.id == \"$TASK_ID\") | .creates.contractExports[]?" "docs/$SPRINT_DIR/tasks.json")
+
+if [ -n "$CONTRACT" ]; then
+  CONTRACT_AUTHOR_HINT="
+
+### KONTRAT YAZICI ROLÜN (ZORUNLU İLK COMMIT)
+Bu task şu kontrat dosyasını yaratıyor:
+**${CONTRACT}**
+
+Deklare etmesi gereken davranışsal flag'ler (true/false ile başla, gerçek değeri implement ettikçe flip et):
+${EXPORTS}
+
+Kontrat formatı (TypeScript veya markdown — proje konvansiyonuna göre seç):
+\`\`\`typescript
+// contracts/<component>.contract.ts
+export const contract = {
+  allowsFile: true,        // dosya yükleme bağlı
+  allowsAudio: false,      // henüz bağlı değil — başka task gelecek
+  allowsImage: true
+};
+\`\`\`
+
+Bu dosya yazılmadan sibling task'lar başlayamaz. SUBSCRIBE eden task'lar bu kontrata göre kendilerini ayarlayacak.
+"
+fi
+```
+
+### Step 5.7 — `mustIntegrate` direktifi
+
+`subscribes` dolu olan task'ın `mustIntegrate` alanı varsa, neighborhood'un en üst bölümüne **vurgulu** yerleştir — implementer bunu görmezden gelemez:
+
+```bash
+MUST=$(jq -r ".tasks[] | select(.id == \"$TASK_ID\") | .mustIntegrate // empty" "docs/$SPRINT_DIR/tasks.json")
+if [ -n "$MUST" ]; then
+  INTEGRATION_DIRECTIVE="
+
+### 🔗 ENTEGRASYON DİREKTİFİ (görmezden gelemezsin)
+${MUST}
+
+Tamamlamadan önce \`integratedWith\` field'ini done JSON'unda **explicit** doldur. Boş bırakırsan task otomatik blocked.
+"
+fi
+```
+
+### Step 5.8 — Affects siblings (semantic conflict önleme)
+
+Aynı `affects` etiketini paylaşan diğer task'lar (paralel veya henüz başlamamış) listelensin:
+
+```bash
+AFFECTS=$(jq -r ".tasks[] | select(.id == \"$TASK_ID\") | .affects[]?" "docs/$SPRINT_DIR/tasks.json")
+SIBLINGS=""
+for TAG in $AFFECTS; do
+  SIBS=$(jq -r ".tasks[] | select(.id != \"$TASK_ID\" and (.affects // [] | index(\"$TAG\"))) | \"- \" + .id + \" (\" + .status + \"): \" + .title" "docs/$SPRINT_DIR/tasks.json")
+  SIBLINGS="${SIBLINGS}
+
+#### Etiket \`${TAG}\` ile çakışan task'lar
+${SIBS}
+"
+done
+```
+
+Bu bölüm implementer'a "senin yaptığın feature başka task'lara da değiyor; onların kontratını/akışını bozma" sinyali verir.
+
 ### Step 6 — Compose neighborhood
 
 Output JSON:
 
 ```json
 {
-  "neighborhood": "## Proje durumu (bağlam)\n\n### Sprint kararları (CONTEXT.md)\n<excerpt>\n\n### Az önce shipping olanlar (son 5)\n- task-id-1: <summary>\n- task-id-2: <summary>\n\n### Şu an parallel\n- task-id-x in worktree-7a3f, files: [...]\n\n### Senin downstream'in\n- task-id-y: bu output'unu kullanacak\n\n### Konvansiyon hatırlatması\n- pilot-tool registry pattern: apps/api/server/_modules/<modul>/tools/<name>.ts\n- e2e page object: e2e/pages/<name>.page.ts\n- i18n tr+en eş zamanlı güncelle\n",
+  "neighborhood": "## Proje durumu (bağlam)\n\n${INTEGRATION_DIRECTIVE}\n\n${CONTRACT_AUTHOR_HINT}\n\n${CONTRACT_SECTION}\n\n${SIBLINGS}\n\n### Sprint kararları (CONTEXT.md)\n<excerpt>\n\n### Az önce shipping olanlar (son 5)\n- task-id-1: <summary>\n- task-id-2: <summary>\n\n### Şu an parallel\n- task-id-x in worktree-7a3f, files: [...]\n\n### Senin downstream'in\n- task-id-y: bu output'unu kullanacak\n\n### Konvansiyon hatırlatması\n- pilot-tool registry pattern: apps/api/server/_modules/<modul>/tools/<name>.ts\n- e2e page object: e2e/pages/<name>.page.ts\n- i18n tr+en eş zamanlı güncelle\n",
   "relatedDownstream": ["task-id-y"],
-  "filesToReadFirst": ["packages/pilot/src/ui/PilotChatBox.tsx", "..."]
+  "filesToReadFirst": ["packages/pilot/src/ui/PilotChatBox.tsx", "..."],
+  "waitingForContracts": [],
+  "subscribedContracts": ["contracts/pilot-composer.contract.ts"],
+  "affectsTags": ["audio-recording"]
 }
 ```
+
+**`waitingForContracts` non-empty ise driver bu task'ı SPAWN ETMEZ** — yazıcı task biter bitmez context-broker re-run edilir, kontrat artık disk'tedir, task claim edilebilir.
 
 The `neighborhood` field is a complete markdown chunk; implementer's prompt template inserts it verbatim under `## Proje durumu (bağlam)`.
 
@@ -82,7 +189,9 @@ The `neighborhood` field is a complete markdown chunk; implementer's prompt temp
 1. **Sen sadece okur, derler ve döndürürsün.** Edit/Write yasak.
 2. **Yapay konvansiyon icat etme.** Sadece CONTEXT.md / CLAUDE.md / decisions.log'da yazılı olanı yansıt.
 3. **Yatay ilişki kuralı.** Aynı wave'deki paralel implementerlar birbirinin file alanını mutlaka görsün ki çakışma riski azalsın.
-4. **Token bütçen düşük (Haiku model).** İçeriği sıkıştır.
+4. **Token bütçen düşük (Haiku model).** İçeriği sıkıştır. Ancak Living Contract subscribe bölümlerini KISALTMA — implementer kontratın tam halini görmeli.
+5. **`waitingForContracts` dürüst raporla.** Bekleniyorsa boş bırakma — driver'ı yanıltma. Bu field eksik veya yanlışsa Sprint-9 tipi audio-gap hatası kaynakta üretilir.
+6. **`mustIntegrate` direktifi neighborhood'un en üstüne.** Aşağı koyarsan implementer atlayabilir; üste koyarsan görmezden gelemez.
 
 ## Sıkıştığında
 

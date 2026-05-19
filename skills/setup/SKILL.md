@@ -148,6 +148,14 @@ Yazılacak dosya:
     "frontendTouchSmokeRequired": true,
     "lastVerifiedAt": "<ISO>"
   },
+  "visionVerify": {
+    "enabled": true | false,
+    "model": "claude-sonnet-4-6",
+    "screenshotsGlob": "test-results/**/*.png",
+    "maxScreenshotsPerReq": 3,
+    "rationale": "Sprint-end requirements-verifier kullanıcı görseli olarak istenen UI gerçekten var mı diye Playwright screenshot'larına multimodal vision ile bakar. Sprint başına ~$0.05. userVisible:false REQ'lerde atlanır.",
+    "lastVerifiedAt": "<ISO>"
+  },
   "telegram": {
     "enabled": true | false,
     "botToken": "<REDACTED-IN-LOGS>",
