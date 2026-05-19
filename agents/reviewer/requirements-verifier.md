@@ -131,17 +131,30 @@ Eğer `integrations.visionVerify: true` ve `REQ.userVisible: true` ama `playwrig
 
 Neden? Sprint-11 canary'sinde Wave 3+4 atlanmıştı, REQ-1+2 vitest yeşil + spec parseable → PASS damgalanmıştı; fakat gerçek browser'da F1 sayfası "Yükleniyor..." state'inde takılıyordu (useEffect loop). Bu silent fail'i tekrar üretmemek için vision-skip artık otomatik PASS değil.
 
+**v0.2.2 — Test infrastructure pre-flight (Sprint-12+13+14 false-FAIL pattern'inden öğrenilen):**
+
+Vision FAIL kararı vermeden önce, **3 test infrastructure check'i** zorunlu:
+
+1. **Dev server age check:** Playwright spec koşumundan önce başlatılan dev server, **son commit'ten önce mi?** PID alive ama git HEAD farklıysa → infrastructure CONCERNS değil REQ FAIL. Sprint-12 vision verify 3000 stale Vite üzerinde koştu → REQ-3/4/5 FAIL damgaladı, gerçekte kod doğruydu.
+2. **Mock fixtures health:** Bir REQ multipart/FormData/SSE gibi non-trivial request shape kullanan UI test ediyorsa, mock-fixture (`mock-pilot-server.ts` veya benzeri) son sprint'te eklenen request shape'ini destekliyor mu? Sprint-14'te mock-pilot-server JSON-only parser idi, multipart attachment akışı için bu DEFAULT_SCENARIO ("Anlamadım") fallback'ine düşürüyordu.
+3. **DB seed presence:** Authenticated tenant için DB'de en az 1 sample chatbot/contact/integration satırı varsa vision verify gerçek user-visible state'i ölçer. Seed yoksa boş UI render edilir, surface assertion'ları fail eder.
+
+**Pattern teşhis:** Vision evidence'da "kullanıcının mesajını yutan generic cevap" (örnekler: "Anlamadım", "Bilemedim", "Daha açık ifade et") gördüğünde **mock-fixture fallback'i ihtimalini incele**. Doğrudan FAIL damgalama; önce postData shape'i (JSON vs multipart) ile mock parser uyumunu doğrula.
+
+**v0.3.0 hedef:** Bu 3 pre-flight check'i otomatize et — sprint-driver verifier çağrısı öncesi `infra-preflight.mjs` script'i ile.
+
 #### 2e. Karar tablosu
 
-| Task coverage | Summary match | Spec coverage | Vision (if applicable) | Final status |
-|---|---|---|---|---|
-| ✓ | ✓ | ✓ | ✓ | **PASS** |
-| ✓ | ✓ | ✓ | n/a (backend) | **PASS** |
-| ✓ | ✓ | ✓ | unclear | **CONCERNS** |
-| ✓ | ✓ | ✓ | skipped-no-screenshots (userVisible REQ) | **CONCERNS** (v0.2.1 — eskiden PASS) |
-| ✓ | ✓ | ✗ | n/a | **CONCERNS** |
-| ✓ | ✗ | * | * | **FAIL** |
-| ✗ | - | - | - | **FAIL** |
+| Task coverage | Summary match | Spec coverage | Vision (if applicable) | Pre-flight (v0.2.2) | Final status |
+|---|---|---|---|---|---|
+| ✓ | ✓ | ✓ | ✓ | ✓ | **PASS** |
+| ✓ | ✓ | ✓ | n/a (backend) | ✓ | **PASS** |
+| ✓ | ✓ | ✓ | unclear | ✓ | **CONCERNS** |
+| ✓ | ✓ | ✓ | skipped-no-screenshots (userVisible REQ) | ✓ | **CONCERNS** (v0.2.1) |
+| ✓ | ✓ | ✓ | FAIL (generic mock fallback) | ✗ (mock/dev stale) | **CONCERNS** (v0.2.2 — eskiden FAIL) |
+| ✓ | ✓ | ✗ | n/a | ✓ | **CONCERNS** |
+| ✓ | ✗ | * | * | * | **FAIL** |
+| ✗ | - | - | - | - | **FAIL** |
 
 `WAIVED` sadece kullanıcı sprint-end'de manuel olarak söylerse — verifier kendi başına bu kararı vermez.
 

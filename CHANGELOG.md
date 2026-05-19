@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.2.2] — 2026-05-19 (Sprint-14 öğrenimleri)
+
+### Vision verify pre-flight + mock infrastructure regression guards
+
+Sprint-12+13+14 boyunca vision verify üç kez **false-FAIL** üretti (kod doğru, test env yanlış). Bu pattern v0.2.2'de skill-pack'e işlenir:
+
+**Requirements-verifier rubric güncellemesi**
+- `agents/reviewer/requirements-verifier.md`: vision FAIL kararı vermeden önce 3-adımlı **test infrastructure pre-flight** zorunlu hâle getirildi:
+  1. **Dev server age check** — Playwright koşumundan önce başlatılan dev server son commit'ten önce mi? PID alive ama git HEAD farklıysa "stale-server" işaretle, FAIL yerine CONCERNS ver.
+  2. **Mock fixtures health** — mock-pilot-server (veya benzeri mock) son sprint'te eklenen request shape'lerini destekliyor mu? `tests/mock-pilot-server.test.mjs` regression suite mevcutsa onun PASS olduğunu doğrula.
+  3. **DB seed presence** — authenticated tenant için seed satırları DB'de mi (seed-test-data.mjs idempotent koşumu).
+- Bu üçü yeşilse vision FAIL gerçek kod bug'ıdır; biri eksikse infrastructure CONCERNS + remediation önerisi.
+
+**Sprint-14 vakası — silent test infrastructure debt pattern**
+- Pilot widget attachment dispatch yolunda multipart/form-data kullanıyor; tüm body field'larını TEK `payload` field'ında JSON.stringify edip files'ı ayrı part'larda gönderiyor.
+- Test fixture (mock-pilot-server) Sprint-9'da attachment desteği eklendiğinde güncellenmemişti — sadece `JSON.parse(postData)` yapıyordu.
+- Sprint-12 vision verify "Pilot Anlamadım dedi" gördüğünde gerçek bug değildi: mock'un fallback'ine düşüyordu. Sprint-14'te düzeltildi (multipart parser + payload unwrap).
+- **v0.2.2 öğrenimi:** Bir feature attachment/multipart/SSE gibi yeni request shape'i eklediğinde, **mock-server fixture'ı da aynı PR'da güncellenmeli**. Living Contract'a benzer "mock-fixture-author" rolü.
+
+**Documented in `agents/reviewer/requirements-verifier.md` Step 2d kuralı:**
+- "Vision evidence'da kullanıcının mesajını yutan generic bir cevap (örnek: 'Anlamadım', 'Daha açık ifade et') gördüğünde → mock-fixture fallback'i ihtimalini incele, FAIL damgası vermeden önce postData shape'i (JSON vs multipart) ile mock parser uyumunu kontrol et."
+
+**v0.2.2 yeni file (gelecek consumer projeler için template):**
+- `templates/mock-pilot-server.test.mjs.example` — consuming projelerde mock-server'ın multipart + JSON parse + scenario matching'ini doğrulayan minimal regression suite.
+
+### Yeni follow-up notları (v0.3.0)
+- `skills/sprint-driver/scripts/bootstrap-worktree.sh` stale-process detection: dev server PID alive ama `git rev-parse HEAD` farklı dosyalara ait commit'lerin önündeyse "restart önerilir" uyarısı.
+- `bypilot-skill-pack-snapshot.json` her sprint sonunda — vision verify dengesini izlemek için (false-FAIL oranı sprint'ten sprint'e nasıl evrildi).
+
 ## [0.2.1] — 2026-05-18 (Sprint-12 canary)
 
 ### Added — Vision verify altyapı çalışıyor + e2e stream timeout savunma
